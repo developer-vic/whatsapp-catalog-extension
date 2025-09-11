@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "WhatsApp Catalog Scraper",
+  "version": "1.0.0",
+  "description": "Professional tool for automated WhatsApp Business catalog extraction with Excel integration and organized file management.",
+  "author": "WhatsApp Catalog Scraper Team",
+  "homepage_url": "https://github.com/your-repo/whatsapp-catalog-scraper",
+  "permissions": ["scripting", "activeTab", "clipboardWrite", "clipboardRead", "downloads", "storage", "alarms"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "32": "assets/icons/icon32.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "32": "assets/icons/icon32.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  }
+}

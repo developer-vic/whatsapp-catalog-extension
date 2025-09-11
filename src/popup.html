@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WhatsApp Catalog Scraper</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-width: 380px;
+      min-height: 500px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+    }
+
+    .container {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      margin: 15px;
+      padding: 25px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    .logo {
+      width: 50px;
+      height: 50px;
+      background: linear-gradient(45deg, #25d366, #128c7e);
+      border-radius: 50%;
+      margin: 0 auto 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: white;
+      font-weight: bold;
+    }
+
+    h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 5px;
+    }
+
+    .subtitle {
+      color: #7f8c8d;
+      font-size: 14px;
+    }
+
+    .section {
+      margin-bottom: 20px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.7);
+      border-radius: 15px;
+      border-left: 4px solid #25d366;
+    }
+
+    .section-title {
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 15px;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-icon {
+      width: 20px;
+      height: 20px;
+      background: #25d366;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .upload-area {
+      border: 2px dashed #25d366;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      background: rgba(37, 211, 102, 0.05);
+      transition: all 0.3s ease;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .upload-area:hover {
+      border-color: #128c7e;
+      background: rgba(37, 211, 102, 0.1);
+      transform: translateY(-2px);
+    }
+
+    .upload-area.dragover {
+      border-color: #25d366;
+      background: rgba(37, 211, 102, 0.15);
+      box-shadow: 0 0 20px rgba(37, 211, 102, 0.3);
+    }
+
+    .upload-icon {
+      font-size: 40px;
+      color: #25d366;
+      margin-bottom: 10px;
+    }
+
+    .upload-text {
+      font-weight: 500;
+      color: #2c3e50;
+      margin-bottom: 5px;
+    }
+
+    .upload-subtext {
+      font-size: 12px;
+      color: #7f8c8d;
+    }
+
+    #excelFile {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .file-info {
+      margin-top: 15px;
+      padding: 15px;
+      background: linear-gradient(45deg, #e8f5e8, #f0f9f0);
+      border-radius: 10px;
+      border-left: 4px solid #28a745;
+      display: none;
+    }
+
+    .file-info-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .file-info-label {
+      font-weight: 500;
+      color: #2c3e50;
+    }
+
+    .file-info-value {
+      color: #28a745;
+      font-weight: 600;
+    }
+
+    .schedule-section {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .schedule-options {
+      display: flex;
+      gap: 10px;
+    }
+
+    .schedule-option {
+      flex: 1;
+      padding: 12px;
+      border: 2px solid #e9ecef;
+      border-radius: 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .schedule-option.active {
+      border-color: #25d366;
+      background: rgba(37, 211, 102, 0.1);
+      color: #25d366;
+    }
+
+    .schedule-option:hover {
+      border-color: #25d366;
+      transform: translateY(-1px);
+    }
+
+    .datetime-input {
+      display: none;
+      animation: slideDown 0.3s ease;
+    }
+
+    .datetime-input.active {
+      display: block;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .input-wrapper {
+      flex: 1;
+      position: relative;
+    }
+
+    .input-label {
+      font-size: 12px;
+      color: #7f8c8d;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+
+    input[type="date"], input[type="time"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.3s ease;
+    }
+
+    input[type="date"]:focus, input[type="time"]:focus {
+      outline: none;
+      border-color: #25d366;
+      box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.1);
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 25px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 15px 20px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .btn-primary {
+      background: linear-gradient(45deg, #25d366, #128c7e);
+      color: white;
+      box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(37, 211, 102, 0.4);
+    }
+
+    .btn-secondary {
+      background: rgba(108, 117, 125, 0.1);
+      color: #6c757d;
+      border: 2px solid #e9ecef;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: #6c757d;
+      color: white;
+      transform: translateY(-1px);
+    }
+
+    .status {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 12px;
+      text-align: center;
+      font-weight: 500;
+      display: none;
+      animation: slideIn 0.3s ease;
+    }
+
+    .status.success {
+      background: linear-gradient(45deg, #d4edda, #c3e6cb);
+      color: #155724;
+      border: 2px solid #28a745;
+    }
+
+    .status.error {
+      background: linear-gradient(45deg, #f8d7da, #f5c6cb);
+      color: #721c24;
+      border: 2px solid #dc3545;
+    }
+
+    .status.info {
+      background: linear-gradient(45deg, #cce7ff, #b3d9ff);
+      color: #004085;
+      border: 2px solid #007bff;
+    }
+
+    .countdown {
+      display: none;
+      text-align: center;
+      padding: 20px;
+      background: linear-gradient(45deg, #fff3cd, #ffeaa7);
+      border-radius: 12px;
+      margin-top: 15px;
+      border: 2px solid #ffc107;
+    }
+
+    .countdown.active {
+      display: block;
+      animation: pulse 2s infinite;
+    }
+
+    .countdown-time {
+      font-size: 24px;
+      font-weight: bold;
+      color: #856404;
+      margin-bottom: 5px;
+    }
+
+    .countdown-label {
+      color: #856404;
+      font-size: 14px;
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+    }
+
+    .loading {
+      position: relative;
+    }
+
+    .loading::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 20px;
+      height: 20px;
+      margin: -10px 0 0 -10px;
+      border: 2px solid transparent;
+      border-top: 2px solid white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">WS</div>
+      <h1>WhatsApp Catalog Scraper</h1>
+      <p class="subtitle">Professional catalog extraction tool</p>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <div class="section-icon">1</div>
+        Upload Excel File
+      </div>
+      <div class="upload-area" id="uploadArea">
+        <div class="upload-icon">📄</div>
+        <div class="upload-text">Drop your Excel file here</div>
+        <div class="upload-subtext">or click to browse (.xlsx, .xls)</div>
+        <input type="file" id="excelFile" accept=".xlsx,.xls" />
+      </div>
+      <div class="file-info" id="fileInfo">
+        <div class="file-info-item">
+          <span class="file-info-label">File:</span>
+          <span class="file-info-value" id="fileName"></span>
+        </div>
+        <div class="file-info-item">
+          <span class="file-info-label">Dealers:</span>
+          <span class="file-info-value" id="dealerCount"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <div class="section-icon">2</div>
+        Schedule Execution
+      </div>
+      <div class="schedule-section">
+        <div class="schedule-options">
+          <div class="schedule-option active" data-type="now">
+            🚀 Start Now
+          </div>
+          <div class="schedule-option" data-type="scheduled">
+            ⏰ Schedule
+          </div>
+        </div>
+        <div class="datetime-input" id="datetimeInput">
+          <div class="input-group">
+            <div class="input-wrapper">
+              <div class="input-label">Date</div>
+              <input type="date" id="scheduleDate" min="">
+            </div>
+            <div class="input-wrapper">
+              <div class="input-label">Time</div>
+              <input type="time" id="scheduleTime">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="countdown" id="countdown">
+      <div class="countdown-time" id="countdownTime">00:00:00</div>
+      <div class="countdown-label">Time until execution</div>
+    </div>
+
+    <div class="action-buttons">
+      <button class="btn btn-secondary" id="resetBtn">Reset</button>
+      <button class="btn btn-primary" id="startBtn">
+        <span id="btnText">Start Scraping</span>
+      </button>
+    </div>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <script src="../lib/xlsx.full.min.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
