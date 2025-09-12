@@ -2,9 +2,9 @@
   "manifest_version": 3,
   "name": "WhatsApp Catalog Scraper",
   "version": "1.0.0",
-  "description": "Professional tool for automated WhatsApp Business catalog extraction with Excel integration and organized file management.",
-  "author": "WhatsApp Catalog Scraper Team",
-  "homepage_url": "https://github.com/your-repo/whatsapp-catalog-scraper",
+  "description": "Professional tool for automated WhatsApp Business catalog extraction with Excel integration and organized file management. ==> https://developervic.com",
+  "author": "developervic",
+  "homepage_url": "https://developervic.com",
   "permissions": ["scripting", "activeTab", "clipboardWrite", "clipboardRead", "downloads", "storage", "alarms"],
   "host_permissions": ["<all_urls>"],
   "action": {
