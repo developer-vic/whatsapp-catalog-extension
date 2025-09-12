@@ -95,7 +95,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             saveAs: false // Don't show save dialog, use default download folder
         }, (downloadId) => {
             if (chrome.runtime.lastError) {
-                console.error("Download failed:", chrome.runtime.lastError);
+                console.log("Download failed:", chrome.runtime.lastError);
             } else {
                 console.log("Download started with ID:", downloadId);
             }
@@ -106,7 +106,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Store scraping results
         scrapingResults = message.results;
         generateExcelOutput();
-        downloadExcelFile();
 
         // Clear scheduled task if it was scheduled
         chrome.alarms.clear('scheduledScraping');
@@ -125,9 +124,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
                 currentExcelData = task.excelData;
                 scrapingResults = [];
                 sessionDateTime = task.sessionDateTime;
-                
+
                 console.log('Executing scheduled task for contact list:', task.contact_list);
-                
+
                 // Find WhatsApp tabs and execute on the first available one
                 chrome.tabs.query({ url: "*://web.whatsapp.com/*" }, (tabs) => {
                     if (tabs.length > 0) {
@@ -137,12 +136,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
                             contact_list: task.contact_list,
                             sessionDateTime: sessionDateTime
                         }).catch((error) => {
-                            console.error('Failed to send startExecution message:', error);
+                            console.log('Failed to send startExecution message:', error);
                         });
                     } else {
-                        console.error('No WhatsApp tabs found for scheduled execution');
+                        console.log('No WhatsApp tabs found for scheduled execution');
                         // Optionally, we could open a WhatsApp tab here
-                        chrome.tabs.create({ 
+                        chrome.tabs.create({
                             url: 'https://web.whatsapp.com',
                             active: true
                         }, (tab) => {
@@ -153,7 +152,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
                                     contact_list: task.contact_list,
                                     sessionDateTime: sessionDateTime
                                 }).catch((error) => {
-                                    console.error('Failed to send startExecution message to new tab:', error);
+                                    console.log('Failed to send startExecution message to new tab:', error);
                                 });
                             }, 5000);
                         });
@@ -197,14 +196,15 @@ function checkAndNotifyScheduledTasks() {
 
 // Check for scheduled tasks every 30 seconds
 setInterval(checkAndNotifyScheduledTasks, 30000);
-
 // Also check immediately when service worker starts
 checkAndNotifyScheduledTasks();
 
-function generateExcelOutput() {
+async function generateExcelOutput() {
     if (!currentExcelData || !scrapingResults || scrapingResults.length == 0) return;
     let firstScrape = scrapingResults[0];
     if (!firstScrape || !firstScrape.items || firstScrape.items.length == 0) return;
+
+    console.log("API JSON", scrapingResults);
 
     try {
         const wb = XLSX.utils.book_new();
@@ -233,27 +233,7 @@ function generateExcelOutput() {
         XLSX.utils.book_append_sheet(wb, dealerOutputSheet, "Dealer Output");
 
         // Sheet 3: Dealer Image Output - Add image paths with new folder structure
-        const dealerImageOutputData = [];
-        scrapingResults.forEach(contactResult => {
-            if (contactResult.items && contactResult.items.length > 0) {
-                contactResult.items.forEach(item => {
-                    if (item.imgData && item.imgData.length > 0) {
-                        item.imgData.forEach((imgData, index) => {
-                            const sanitizedContactName = contactResult.contact.replace(/\s+/g, '_');
-                            const sanitizedItemName = item.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50);
-                            // New folder structure: datetime/contact_name/catalog_name/img1.jpg
-                            const imagePath = `${sessionDateTime}/${sanitizedContactName}/${sanitizedItemName}/img${index + 1}.jpg`;
-
-                            dealerImageOutputData.push({
-                                'Dealer Name': contactResult.contact,
-                                'Car Detail': `${item.name} - ${item.desc}`,
-                                'ImagePathName': imagePath
-                            });
-                        });
-                    }
-                });
-            }
-        });
+        const dealerImageOutputData = await GetDealerImageOutputData();
         const dealerImageOutputSheet = XLSX.utils.json_to_sheet(dealerImageOutputData);
         autoFitColumns(dealerImageOutputSheet, dealerImageOutputData);
         XLSX.utils.book_append_sheet(wb, dealerImageOutputSheet, "Dealer Image Output");
@@ -261,10 +241,61 @@ function generateExcelOutput() {
         // Store the generated workbook
         currentExcelData.outputWorkbook = wb;
 
+        downloadExcelFile();
         console.log("Excel output generated successfully");
     } catch (error) {
-        console.error("Error generating Excel output:", error);
+        console.log("Error generating Excel output:", error);
     }
+}
+
+async function GetDealerImageOutputData() {
+    const dealerImageOutputData = [];
+
+    // Create an array of promises for all async operations
+    const promises = [];
+
+    scrapingResults.forEach(contactResult => {
+        if (contactResult.items && contactResult.items.length > 0) {
+            contactResult.items.forEach(item => {
+                if (item.imgData && item.imgData.length > 0) {
+                    item.imgData.forEach((imgData, index) => {
+                        const promise = (async () => {
+                            // Convert base64 to Blob
+                            const response = await fetch(imgData);
+                            const blob = await response.blob();
+                            const file = new File([blob], `img${index + 1}.jpg`, { type: blob.type });
+
+                            // Upload to Cloudinary
+                            const sanitizedContactName = contactResult.contact.replace(/\s+/g, '_');
+                            const sanitizedItemName = item.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50);
+                            const folder_name = `${sessionDateTime}/${sanitizedContactName}/${sanitizedItemName}`;
+                            const result = await uploadToCloudinary(file, folder_name);
+
+                            const imagePath = result.secure_url;
+
+                            // Replace base64 data with secure URL in the original array
+                            item.imgData[index] = imagePath;
+
+                            return {
+                                'Dealer Name': contactResult.contact,
+                                'Car Detail': `${item.name} - ${item.desc}`,
+                                'ImagePathName': imagePath
+                            };
+                        })();
+                        promises.push(promise);
+                    });
+                }
+            });
+        }
+    });
+
+    // Wait for all promises to complete
+    const results = await Promise.all(promises);
+    results.forEach(dealerData => {
+        dealerImageOutputData.push(dealerData);
+    });
+
+    return dealerImageOutputData;
 }
 
 // Function to auto-fit column widths
@@ -297,7 +328,7 @@ function autoFitColumns(worksheet, data) {
 
 function downloadExcelFile() {
     if (!currentExcelData || !currentExcelData.outputWorkbook) {
-        console.error("No Excel data to download");
+        console.log("No Excel data to download");
         return;
     }
 
@@ -318,13 +349,69 @@ function downloadExcelFile() {
             saveAs: false // Direct download without save dialog
         }, (downloadId) => {
             if (chrome.runtime.lastError) {
-                console.error("Excel download failed:", chrome.runtime.lastError);
+                console.log("Excel download failed:", chrome.runtime.lastError);
             } else {
                 console.log("Excel download started with ID:", downloadId);
             }
         });
 
     } catch (error) {
-        console.error("Error downloading Excel file:", error);
+        console.log("Error downloading Excel file:", error);
+    }
+}
+
+
+
+// Cloudinary configuration
+const CLOUDINARY_CONFIG = {
+    cloudName: 'dwunzqigc',
+    apiKey: '681484459434256',
+    apiSecret: 'U2EjlMiM0qDbAPj_hG2aYuEufNQ',
+    folder: 'carimages/'
+};
+
+// Generate signature for signed upload
+async function generateSignature(timestamp, folder) {
+    const message = `folder=${folder}&timestamp=${timestamp}${CLOUDINARY_CONFIG.apiSecret}`;
+    const encoder = new TextEncoder();
+    const data = encoder.encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+}
+
+// Upload function
+async function uploadToCloudinary(file, folder_name) {
+
+    try {
+        const timestamp = Math.round(Date.now() / 1000);
+        const folder = CLOUDINARY_CONFIG.folder + folder_name;
+        const signature = await generateSignature(timestamp, folder);
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('folder', folder);
+        formData.append('timestamp', timestamp);
+        formData.append('api_key', CLOUDINARY_CONFIG.apiKey);
+        formData.append('signature', signature);
+
+        const response = await fetch(
+            `https://api.cloudinary.com/v1_1/${CLOUDINARY_CONFIG.cloudName}/image/upload`,
+            {
+                method: 'POST',
+                body: formData
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`Upload failed: ${response}`);
+        }
+
+        const result = await response.json();
+        return result;
+    } catch (error) {
+        console.log('Upload error:', error);
+        return { "secure_url": "" };
     }
 }
