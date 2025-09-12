@@ -79,12 +79,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.alarms.clear('scheduledScraping');
         chrome.storage.local.remove('scheduledTask');
 
-        // Notify content script
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            chrome.tabs.sendMessage(tabs[0].id, {
-                action: "scheduleCancelled"
+        // Notify all WhatsApp tabs about cancellation
+        chrome.tabs.query({ url: "*://web.whatsapp.com/*" }, (tabs) => {
+            tabs.forEach(tab => {
+                chrome.tabs.sendMessage(tab.id, {
+                    action: "scheduleCancelled"
+                }).catch(() => {
+                    // Ignore errors for tabs that don't have content script loaded
+                });
             });
         });
+
+        console.log("Scheduled task cancelled");
     }
 
     if (message.action === "downloadImage") {
@@ -204,8 +210,6 @@ async function generateExcelOutput() {
     let firstScrape = scrapingResults[0];
     if (!firstScrape || !firstScrape.items || firstScrape.items.length == 0) return;
 
-    console.log("API JSON", scrapingResults);
-
     try {
         const wb = XLSX.utils.book_new();
 
@@ -242,9 +246,36 @@ async function generateExcelOutput() {
         currentExcelData.outputWorkbook = wb;
 
         downloadExcelFile();
+        sendToWebhook(scrapingResults);
+
         console.log("Excel output generated successfully");
     } catch (error) {
         console.log("Error generating Excel output:", error);
+    }
+}
+
+async function sendToWebhook(data) {
+    const webhookUrl = 'https://hook.us1.make.com/lqcm1la7nvdevcx0lnwh7i3478fi8s3s';
+
+    try {
+        const jsonData = {result: data};
+        console.log("Sending data to webhook:", jsonData);
+
+        const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(jsonData)
+        });
+
+        if (!response.ok) {
+            throw new Error(`Webhook request failed: ${JSON.stringify(response)}`);
+        }
+
+        console.log('Data successfully sent to webhook');
+    } catch (error) {
+        console.log('Error sending data to webhook:', error);
     }
 }
 
@@ -253,6 +284,7 @@ async function GetDealerImageOutputData() {
 
     // Create an array of promises for all async operations
     const promises = [];
+    let completedUploads = 0;
 
     scrapingResults.forEach(contactResult => {
         if (contactResult.items && contactResult.items.length > 0) {
@@ -276,6 +308,10 @@ async function GetDealerImageOutputData() {
                             // Replace base64 data with secure URL in the original array
                             item.imgData[index] = imagePath;
 
+                            // Update progress
+                            completedUploads++;
+                            sendUploadProgress(completedUploads, promises.length);
+
                             return {
                                 'Dealer Name': contactResult.contact,
                                 'Car Detail': `${item.name} - ${item.desc}`,
@@ -289,13 +325,49 @@ async function GetDealerImageOutputData() {
         }
     });
 
+    // Send initial progress
+    if (promises.length > 0) {
+        sendUploadProgress(0, promises.length);
+    }
+
     // Wait for all promises to complete
     const results = await Promise.all(promises);
     results.forEach(dealerData => {
         dealerImageOutputData.push(dealerData);
     });
 
+    // Send completion message
+    sendUploadComplete();
+
     return dealerImageOutputData;
+}
+
+// Function to send upload progress to content script
+function sendUploadProgress(completed, total) {
+    chrome.tabs.query({ url: "*://web.whatsapp.com/*" }, (tabs) => {
+        tabs.forEach(tab => {
+            chrome.tabs.sendMessage(tab.id, {
+                action: "uploadProgress",
+                progress: completed,
+                total: total
+            }).catch(() => {
+                // Ignore errors for tabs that don't have content script loaded
+            });
+        });
+    });
+}
+
+// Function to send upload completion to content script
+function sendUploadComplete() {
+    chrome.tabs.query({ url: "*://web.whatsapp.com/*" }, (tabs) => {
+        tabs.forEach(tab => {
+            chrome.tabs.sendMessage(tab.id, {
+                action: "uploadComplete"
+            }).catch(() => {
+                // Ignore errors for tabs that don't have content script loaded
+            });
+        });
+    });
 }
 
 // Function to auto-fit column widths

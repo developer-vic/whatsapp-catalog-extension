@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>WhatsApp Catalog Scraper</title>
@@ -227,7 +228,8 @@
       font-weight: 500;
     }
 
-    input[type="date"], input[type="time"] {
+    input[type="date"],
+    input[type="time"] {
       width: 100%;
       padding: 12px;
       border: 2px solid #e9ecef;
@@ -236,7 +238,8 @@
       transition: border-color 0.3s ease;
     }
 
-    input[type="date"]:focus, input[type="time"]:focus {
+    input[type="date"]:focus,
+    input[type="time"]:focus {
       outline: none;
       border-color: #25d366;
       box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.1);
@@ -346,19 +349,41 @@
     }
 
     @keyframes slideDown {
-      from { opacity: 0; transform: translateY(-10px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     @keyframes slideIn {
-      from { opacity: 0; transform: scale(0.95); }
-      to { opacity: 1; transform: scale(1); }
+      from {
+        opacity: 0;
+        transform: scale(0.95);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
     }
 
     @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4); }
-      70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+      0% {
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4);
+      }
+
+      70% {
+        box-shadow: 0 0 0 10px rgba(255, 193, 7, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+      }
     }
 
     .loading {
@@ -379,12 +404,29 @@
       animation: spin 1s linear infinite;
     }
 
+    .resetBtn {
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
     @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
     }
   </style>
 </head>
+
 <body>
   <div class="container">
     <div class="header">
@@ -451,7 +493,7 @@
     </div>
 
     <div class="action-buttons">
-      <button class="btn btn-secondary" id="resetBtn">Reset</button>
+      <button class="resetBtn" id="resetBtn">Reset</button>
       <button class="btn btn-primary" id="startBtn">
         <span id="btnText">Start Scraping</span>
       </button>
@@ -463,4 +505,5 @@
   <script src="../lib/xlsx.full.min.js"></script>
   <script src="popup.js"></script>
 </body>
+
 </html>

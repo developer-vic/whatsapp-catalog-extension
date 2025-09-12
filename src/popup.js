@@ -264,12 +264,6 @@ function scheduleTask() {
         excelData: excelData
     });
 
-    // Update UI for scheduled state
-    document.getElementById('startBtn').innerHTML = '<span>Cancel Schedule</span>';
-    document.getElementById('startBtn').classList.add('btn-secondary');
-    document.getElementById('startBtn').classList.remove('btn-primary');
-    document.getElementById('startBtn').onclick = cancelSchedule;
-
     // Start local countdown in popup (if popup stays open)
     startCountdown(scheduledDateTime);
 
@@ -289,6 +283,7 @@ function startCountdown(targetDateTime) {
         if (timeDiff <= 0) {
             clearInterval(countdownInterval);
             countdownDiv.classList.remove('active');
+            window.close(); // Close popup when countdown ends
             return;
         }
 

@@ -1,6 +1,8 @@
 // Content script that waits for message from background
 console.log("Content script loaded");
 let sessionDateTime = null;
+let overlayElement = null;
+let countdownInterval = null;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log("Received message in content script:", message);
@@ -14,11 +16,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.action === "taskScheduled") {
-        // Show scheduled task countdown in overlay (avoid duplicates)
+        // Show scheduled task countdown in overlay
+        showScheduledTaskOverlay(message.scheduledTime);
     }
 
     if (message.action === "scheduleCancelled") {
         // Hide countdown overlay
+        hideOverlay();
+    }
+
+    if (message.action === "uploadProgress") {
+        // Show Cloudinary upload progress
+        showUploadProgressOverlay(message.progress, message.total);
+    }
+
+    if (message.action === "uploadComplete") {
+        // Hide upload progress overlay
+        hideOverlay();
     }
 });
 
@@ -26,6 +40,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function checkForScheduledTasks() {
     // Ask background script to check for scheduled tasks
     chrome.runtime.sendMessage({ action: "checkScheduledTasks" });
+}
+
+// Initialize content script and check for scheduled tasks
+document.addEventListener('DOMContentLoaded', checkForScheduledTasks);
+// Also check when script loads (in case DOM is already loaded)
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checkForScheduledTasks);
+} else {
+    checkForScheduledTasks();
 }
 
 async function wait(ms) {
@@ -261,4 +284,148 @@ function DownloadContactCatalog(contact_name, allCatalogItems) {
     }
 
     return fileLocations;
+}
+
+// Overlay management functions
+function createOverlay(showCancelButton = false) {
+    if (overlayElement) return overlayElement;
+
+    overlayElement = document.createElement('div');
+    overlayElement.id = 'whatsapp-extension-overlay';
+    overlayElement.innerHTML = `
+        <div class="overlay-content">
+            <div class="overlay-time" id="overlayTime">00:00:00</div>
+            <div class="overlay-label" id="overlayLabel">Loading...</div>
+            ${showCancelButton ? '<button class="cancel-button" id="cancelButton">Cancel</button>' : ''}
+        </div>
+    `;
+
+    // Add styles
+    const style = document.createElement('style');
+    style.textContent = `
+        #whatsapp-extension-overlay {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            min-width: 180px;
+            text-align: center;
+        }
+        
+        .overlay-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .overlay-time {
+            font-size: 18px;
+            font-weight: bold;
+            color: #25d366;
+            margin-bottom: 5px;
+        }
+        
+        .overlay-label {
+            font-size: 12px;
+            color: #ccc;
+            margin-bottom: 8px;
+        }
+        
+        .cancel-button {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 5px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .cancel-button:hover {
+            background: #c82333;
+        }
+    `;
+
+    document.head.appendChild(style);
+    document.body.appendChild(overlayElement);
+
+    // Add click event listener to cancel button if it exists
+    const cancelButton = document.getElementById('cancelButton');
+    if (cancelButton) {
+        cancelButton.addEventListener('click', cancelScheduledTask);
+    }
+
+    return overlayElement;
+}
+
+function showScheduledTaskOverlay(scheduledTime) {
+    hideOverlay(); // Hide any existing overlay
+    createOverlay(true); // Show cancel button for scheduled tasks
+    
+    const labelElement = document.getElementById('overlayLabel');
+    labelElement.textContent = 'Time until execution';
+    
+    // Start countdown
+    countdownInterval = setInterval(() => {
+        const now = new Date().getTime();
+        const scheduledDateTime = new Date(scheduledTime).getTime();
+        const timeLeft = scheduledDateTime - now;
+        
+        if (timeLeft <= 0) {
+            hideOverlay();
+            return;
+        }
+        
+        const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+        const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+        
+        const timeElement = document.getElementById('overlayTime');
+        if (timeElement) {
+            timeElement.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+    }, 1000);
+}
+
+function showUploadProgressOverlay(progress, total) {
+    createOverlay(false); // No cancel button for upload progress
+    
+    const timeElement = document.getElementById('overlayTime');
+    const labelElement = document.getElementById('overlayLabel');
+    
+    timeElement.textContent = `${progress}/${total}`;
+    labelElement.textContent = 'Uploading to Cloudinary';
+}
+
+// Function to cancel scheduled task
+function cancelScheduledTask() {
+    // Send cancel message to background script
+    chrome.runtime.sendMessage({
+        action: "cancelSchedule"
+    });
+    
+    // Hide the overlay immediately
+    hideOverlay();
+    
+    console.log("Scheduled task cancelled by user");
+}
+
+function hideOverlay() {
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+    
+    if (overlayElement) {
+        overlayElement.remove();
+        overlayElement = null;
+    }
 }
