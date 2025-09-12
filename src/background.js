@@ -5,6 +5,16 @@ let currentExcelData = null;
 let scrapingResults = [];
 let sessionDateTime = null; // Store the session datetime
 
+// Handle extension installation
+chrome.runtime.onInstalled.addListener((details) => {
+    if (details.reason === 'install') {
+        // Open developervic.com when extension is first installed
+        chrome.tabs.create({
+            url: 'https://programmergwin.com'
+        });
+    }
+});
+
 // Background service worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "executeScript") {
