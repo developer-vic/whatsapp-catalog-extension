@@ -1,431 +1,317 @@
-// Content script that waits for message from background
-console.log("Content script loaded");
+console.log('WhatsApp catalog content script ready');
+
 let sessionDateTime = null;
 let overlayElement = null;
-let countdownInterval = null;
+let overlayTimer = null;
+let uploadedCount = 0;
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log("Received message in content script:", message);
-    if (message.action === "startExecution") {
-        try {
-            sessionDateTime = message.sessionDateTime;
-            executeOtobixScript(message.contact_list);
-        } catch (error) {
-            console.log('Error starting execution:', error);
-        }
-    }
-
-    if (message.action === "taskScheduled") {
-        // Show scheduled task countdown in overlay
-        showScheduledTaskOverlay(message.scheduledTime);
-    }
-
-    if (message.action === "scheduleCancelled") {
-        // Hide countdown overlay
-        hideOverlay();
-    }
-
-    if (message.action === "uploadProgress") {
-        // Show Cloudinary upload progress
-        showUploadProgressOverlay(message.progress, message.total);
-    }
-
-    if (message.action === "uploadComplete") {
-        // Hide upload progress overlay
-        hideOverlay();
-    }
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.action === 'startExecution') {
+    sessionDateTime = message.sessionDateTime;
+    uploadedCount = 0;
+    runScraper(message.contact_list).catch((error) => {
+      console.error('Failed to execute scraper:', error);
+      chrome.runtime.sendMessage({ action: 'scrapingFailed', error: error.message });
+      hideOverlay();
+    });
+  }
 });
 
-// Check for existing scheduled tasks on page load
-function checkForScheduledTasks() {
-    // Ask background script to check for scheduled tasks
-    chrome.runtime.sendMessage({ action: "checkScheduledTasks" });
+async function runScraper(contactList) {
+  if (!Array.isArray(contactList) || contactList.length === 0) {
+    throw new Error('Contact list is empty.');
+  }
+
+  ensureOverlay();
+  showOverlayStatus('Starting scrape...');
+
+  const aggregatedContacts = [];
+
+  for (const contactName of contactList) {
+    showOverlayStatus(`Scraping ${contactName}`);
+    const items = await scrapeContactCatalog(contactName);
+    aggregatedContacts.push({ contact: contactName, items });
+  }
+
+  chrome.runtime.sendMessage({
+    action: 'scrapingCompleted',
+    results: aggregatedContacts,
+    summary: {
+      totalContacts: aggregatedContacts.length,
+      totalItems: aggregatedContacts.reduce((acc, entry) => acc + (entry.items?.length || 0), 0)
+    }
+  });
+
+  showOverlayStatus('Scraping finished');
+  setTimeout(hideOverlay, 2500);
 }
 
-// Initialize content script and check for scheduled tasks
-document.addEventListener('DOMContentLoaded', checkForScheduledTasks);
-// Also check when script loads (in case DOM is already loaded)
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', checkForScheduledTasks);
-} else {
-    checkForScheduledTasks();
-}
+async function scrapeContactCatalog(contactName) {
+  try {
+    await wait(800);
 
-async function wait(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function clickElement(element) {
-    // Find deeply nested clickable element
-    let clickableChild = element;
-    for (let i = 0; i < 3; i++) {
-        const nested = clickableChild?.querySelector('div, span, [role="button"]');
-        if (nested) clickableChild = nested;
-        else break;
+    const searchInput = document.querySelector('div[contenteditable="true"][aria-label="Search input textbox"]');
+    if (!searchInput) {
+      throw new Error('Unable to locate WhatsApp search input.');
     }
 
-    if (clickableChild && clickableChild !== element) {
-        clickableChild.focus();
-        clickableChild.click();
-        clickableChild.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        clickableChild.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-        clickableChild.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    }
-}
+    searchInput.focus();
+    searchInput.click();
 
-let allCatalogItems = [];
-let allContactsCatalog = [];
-
-async function executeOtobixScript(contact_list) {
-    allContactsCatalog = [];
-
-    for (let i = 0; i < contact_list.length; i++) {
-        const contact_name = contact_list[i];
-
-        const allCatalogItems = await executeContact(contact_name);
-        //const fileLocations = DownloadContactCatalog(contact_name, allCatalogItems);
-        allContactsCatalog.push({ contact: contact_name, items: allCatalogItems /*, files: fileLocations*/ });
-
-        const backButton = document.querySelector('div[aria-label="Back"]');
-        if (backButton) {
-            backButton.click();
-            await wait(500);
-        }
+    await navigator.clipboard.writeText(contactName);
+    await wait(80);
+    const cancelButton = document.querySelector('button[aria-label="Cancel search"]');
+    if (cancelButton) {
+      cancelButton.click();
+      await wait(250);
     }
 
-    // Send completion message to background script with results
-    chrome.runtime.sendMessage({
-        action: "scrapingCompleted",
-        results: allContactsCatalog
-    });
-}
+    document.execCommand('insertText', false, contactName);
+    searchInput.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await wait(800);
 
-async function executeContact(contact_name) {
-    try {
-        await wait(1000); // Wait for 1 second to ensure the page is fully loaded
-        console.log("Executing script with contact name:", contact_name);
-
-        const el = document.querySelector('div[contenteditable="true"][aria-label="Search input textbox"]');
-        if (!el) {
-            throw new Error('Search input not found');
-        }
-
-        el.focus();
-        el.click();
-
-        await navigator.clipboard.writeText(contact_name);
-        await wait(100);
-        const cancelButton = document.querySelector('button[aria-label="Cancel search"]');
-        if (cancelButton) {
-            cancelButton.click();
-            await wait(500);
-        }
-        document.execCommand('insertText', false, contact_name);
-        el.dispatchEvent(new InputEvent('input', { bubbles: true }));
-        await wait(1000);
-
-        const searchResults = document.querySelector('div[aria-label="Search results."]');
-        if (!searchResults) {
-            console.log("Search results container not found"); 
-            return [];
-        }
-
-        const firstContact = searchResults.querySelectorAll('div[role="listitem"]')[1];
-        if (!firstContact) {
-            console.log("No contacts found in search results"); 
-            return [];
-        }
-        clickElement(firstContact);
-        await wait(1000);
-
-        const catalogButton = document.querySelector('button[title="Catalog"]');
-        if (!catalogButton) {
-            console.log("Catalog button not found"); 
-            return [];
-        }
-        catalogButton.click();
-        await wait(2000);
-
-        allCatalogItems = [];
-        await ScrapeCatalogItems();
-
-        console.log("All catalog items for", contact_name, ":", allCatalogItems);
-        return allCatalogItems;
-
-    } catch (error) {
-        console.log(`Error processing contact ${contact_name}:`, error); 
-        return [];
-    }
-}
-
-async function ScrapeCatalogItems() {
-    //div role="listitem"
-    let catalogItemElements = document.querySelectorAll('div[role="listitem"]');
-    if (catalogItemElements.length === 0 || catalogItemElements.length < 3) {
-        console.log("No catalog items found"); 
-        return;
+    const searchResults = document.querySelector('div[aria-label="Search results."]');
+    if (!searchResults) {
+      console.warn('No search results container for contact:', contactName);
+      return [];
     }
 
-    //foreach catalog item click  
-    for (let i = 0; i < catalogItemElements.length - 1; i++) {
-        const item = catalogItemElements[i];
-        //get first 3 span dir="auto" as name, desc, price
-        const spans = item.querySelectorAll('span[dir="auto"]');
-        if (spans.length < 3) {
-            continue;
-        }
-        const name = spans[0].innerText;
-        const desc = spans[1].innerText;
-        const price = spans[2].innerText;
-
-        if (allCatalogItems.find(c => c.name === name && c.desc === desc && c.price === price)) {
-            continue; //duplicate
-        }
-
-        clickElement(item);
-        await wait(2000);
-
-        const data = await ScrapeCatalogDetails();
-        await wait(2000);
-
-        allCatalogItems.push({ name, desc, price, ...data });
-        catalogItemElements = document.querySelectorAll('div[role="listitem"]');
+    const resultItems = searchResults.querySelectorAll('div[role="listitem"]');
+    const targetContact = resultItems.length > 1 ? resultItems[1] : null;
+    if (!targetContact) {
+      console.warn('Contact not found in search results:', contactName);
+      return [];
     }
 
-    // Scroll to the last item to potentially load more content
-    const lastItem = catalogItemElements[catalogItemElements.length - 1];
-    if (lastItem) {
-        lastItem.scrollIntoView();
-        await wait(1000);
+    clickElement(targetContact);
+    await wait(900);
+
+    const catalogButton = document.querySelector('button[title="Catalog"]');
+    if (!catalogButton) {
+      console.warn('Catalog button missing for contact:', contactName);
+      return [];
     }
 
-    // Check if more items have loaded after scrolling
-    const newCatalogItemElements = document.querySelectorAll('div[role="listitem"]');
-    if (newCatalogItemElements.length > catalogItemElements.length) {
-        await ScrapeCatalogItems(); // Recursively scrape more items
-    }
-}
+    catalogButton.click();
+    await wait(1500);
 
-async function ScrapeCatalogDetails() {
-    //take all src from img with draggable="false" and convert to base64 data
-    const imgElements = document.querySelectorAll('img[draggable="false"]');
-    const imgData = [];
-
-    for (const img of imgElements) {
-        try {
-            // Try canvas method first (works for same-origin images)
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = img.naturalWidth || img.width;
-            canvas.height = img.naturalHeight || img.height;
-            ctx.drawImage(img, 0, 0);
-            const base64Data = canvas.toDataURL('image/jpeg', 0.8);
-            imgData.push(base64Data);
-        } catch (canvasError) {
-            console.log("Canvas method failed, trying fetch for image:", img.src);
-        }
-    }
-
-    //get element that comes before div title="Message business"
-    let messageBusinessDiv = document.querySelector('div[title="Message business"]');
-    messageBusinessDiv.scrollIntoView();
-    await wait(300);
-    let elementBefore = messageBusinessDiv ? messageBusinessDiv.previousElementSibling : null;
-    let description = elementBefore.textContent;
-
-    //find span by text Read more
-    const readMoreSpan = Array.from(document.querySelectorAll('span')).find(span =>
-        span.textContent.trim() === "Read more"
-    );
-    if (readMoreSpan) {
-        readMoreSpan.click();
-        await wait(500);
-        messageBusinessDiv = document.querySelector('div[title="Message business"]');
-        elementBefore = messageBusinessDiv ? messageBusinessDiv.previousElementSibling : null;
-        if (elementBefore) description = elementBefore.textContent;
-
-        const backButtonInner = document.querySelector('div[aria-label="Back"]');
-        if (backButtonInner) {
-            backButtonInner.click();
-            await wait(500);
-        }
-    }
-    description = description.replace("https", " https");
+    const items = [];
+    await collectCatalogItems(contactName, items);
 
     const backButton = document.querySelector('div[aria-label="Back"]');
     if (backButton) {
-        backButton.click();
-        await wait(500);
+      backButton.click();
+      await wait(400);
     }
 
-    return { imgData, description };
+    return items;
+  } catch (error) {
+    console.error(`Error while scraping contact ${contactName}:`, error);
+    return [];
+  }
 }
 
+async function collectCatalogItems(contactName, accumulator) {
+  let catalogCards = Array.from(document.querySelectorAll('div[role="listitem"]'));
+  if (catalogCards.length <= 1) {
+    console.warn('No catalog cards found for', contactName);
+    return;
+  }
 
-function DownloadContactCatalog(contact_name, allCatalogItems) {
-    //download all images in allCatalogItems to local and save to folder structure: datetime/contact_name/catalog_name/
-    for (let i = 0; i < allCatalogItems.length; i++) {
-        const item = allCatalogItems[i];
-        for (let j = 0; j < item.imgData.length; j++) {
-            const imgBase64 = item.imgData[j];
-            // New folder structure: datetime/ContactName/CatalogName/img1.jpg
-            const sanitizedContactName = contact_name.replace(/\s+/g, '_');
-            const sanitizedItemName = item.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50); // Sanitize filename and limit length
-            const filename = `${sessionDateTime}/${sanitizedContactName}/${sanitizedItemName}/img${j + 1}.jpg`;
-            fileLocations.push(filename);
-
-            // Use Chrome downloads API to create folder structure
-            chrome.runtime.sendMessage({
-                action: "downloadImage",
-                imageData: imgBase64,
-                filename: filename
-            });
-        }
+  for (let index = 0; index < catalogCards.length - 1; index++) {
+    const card = catalogCards[index];
+    const spans = card.querySelectorAll('span[dir="auto"]');
+    if (spans.length < 3) {
+      continue;
     }
 
-    return fileLocations;
-}
+    const name = spans[0].innerText;
+    const desc = spans[1].innerText;
+    const price = spans[2].innerText;
 
-// Overlay management functions
-function createOverlay(showCancelButton = false) {
-    if (overlayElement) return overlayElement;
-
-    overlayElement = document.createElement('div');
-    overlayElement.id = 'whatsapp-extension-overlay';
-    overlayElement.innerHTML = `
-        <div class="overlay-content">
-            <div class="overlay-time" id="overlayTime">00:00:00</div>
-            <div class="overlay-label" id="overlayLabel">Loading...</div>
-            ${showCancelButton ? '<button class="cancel-button" id="cancelButton">Cancel</button>' : ''}
-        </div>
-    `;
-
-    // Add styles
-    const style = document.createElement('style');
-    style.textContent = `
-        #whatsapp-extension-overlay {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 10000;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 15px;
-            border-radius: 10px;
-            font-family: Arial, sans-serif;
-            font-size: 14px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            min-width: 180px;
-            text-align: center;
-        }
-        
-        .overlay-content {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        
-        .overlay-time {
-            font-size: 18px;
-            font-weight: bold;
-            color: #25d366;
-            margin-bottom: 5px;
-        }
-        
-        .overlay-label {
-            font-size: 12px;
-            color: #ccc;
-            margin-bottom: 8px;
-        }
-        
-        .cancel-button {
-            background: #dc3545;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 5px;
-            font-size: 11px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        
-        .cancel-button:hover {
-            background: #c82333;
-        }
-    `;
-
-    document.head.appendChild(style);
-    document.body.appendChild(overlayElement);
-
-    // Add click event listener to cancel button if it exists
-    const cancelButton = document.getElementById('cancelButton');
-    if (cancelButton) {
-        cancelButton.addEventListener('click', cancelScheduledTask);
+    if (accumulator.some((item) => item.name === name && item.desc === desc && item.price === price)) {
+      continue;
     }
 
-    return overlayElement;
-}
+    clickElement(card);
+    await wait(1200);
 
-function showScheduledTaskOverlay(scheduledTime) {
-    hideOverlay(); // Hide any existing overlay
-    createOverlay(true); // Show cancel button for scheduled tasks
-    
-    const labelElement = document.getElementById('overlayLabel');
-    labelElement.textContent = 'Time until execution';
-    
-    // Start countdown
-    countdownInterval = setInterval(() => {
-        const now = new Date().getTime();
-        const scheduledDateTime = new Date(scheduledTime).getTime();
-        const timeLeft = scheduledDateTime - now;
-        
-        if (timeLeft <= 0) {
-            hideOverlay();
-            return;
-        }
-        
-        const hours = Math.floor(timeLeft / (1000 * 60 * 60));
-        const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
-        
-        const timeElement = document.getElementById('overlayTime');
-        if (timeElement) {
-            timeElement.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        }
-    }, 1000);
-}
+    const details = await scrapeCatalogDetails();
+    const catalogItem = { name, desc, price, ...details };
+    accumulator.push(catalogItem);
 
-function showUploadProgressOverlay(progress, total) {
-    createOverlay(false); // No cancel button for upload progress
-    
-    const timeElement = document.getElementById('overlayTime');
-    const labelElement = document.getElementById('overlayLabel');
-    
-    timeElement.textContent = `${progress}/${total}`;
-    labelElement.textContent = 'Uploading to Cloudinary';
-}
+    uploadedCount += 1;
+    updateOverlayProgress(uploadedCount);
 
-// Function to cancel scheduled task
-function cancelScheduledTask() {
-    // Send cancel message to background script
     chrome.runtime.sendMessage({
-        action: "cancelSchedule"
+      action: 'catalogItemScraped',
+      contact: contactName,
+      item: catalogItem,
+      totalItems: Math.max(accumulator.length, catalogCards.length - 1)
     });
-    
-    // Hide the overlay immediately
-    hideOverlay();
-    
-    console.log("Scheduled task cancelled by user");
+
+    catalogCards = Array.from(document.querySelectorAll('div[role="listitem"]'));
+  }
+
+  const loader = catalogCards[catalogCards.length - 1];
+  if (loader) {
+    loader.scrollIntoView();
+    await wait(800);
+    const refreshed = Array.from(document.querySelectorAll('div[role="listitem"]'));
+    if (refreshed.length > catalogCards.length) {
+      await collectCatalogItems(contactName, accumulator);
+    }
+  }
+}
+
+async function scrapeCatalogDetails() {
+  const messageBusiness = document.querySelector('div[title="Message business"]');
+  let description = '';
+
+  if (messageBusiness) {
+    messageBusiness.scrollIntoView();
+    await wait(200);
+    const prev = messageBusiness.previousElementSibling;
+    if (prev) {
+      description = prev.textContent || '';
+    }
+
+    const readMore = Array.from(document.querySelectorAll('span')).find((span) => span.textContent.trim() === 'Read more');
+    if (readMore) {
+      readMore.click();
+      await wait(400);
+      const refreshedMessage = document.querySelector('div[title="Message business"]');
+      if (refreshedMessage) {
+        const refreshedPrev = refreshedMessage.previousElementSibling;
+        if (refreshedPrev) {
+          description = refreshedPrev.textContent || description;
+        }
+      }
+      const back = document.querySelector('div[aria-label="Back"]');
+      if (back) {
+        back.click();
+        await wait(350);
+      }
+    }
+  }
+
+  const backButton = document.querySelector('div[aria-label="Back"]');
+  if (backButton) {
+    backButton.click();
+    await wait(350);
+  }
+
+  return {
+    description: description.replace('https', ' https')
+  };
+}
+
+async function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function clickElement(element) {
+  if (!element) {
+    return;
+  }
+
+  let target = element;
+  for (let depth = 0; depth < 3; depth++) {
+    const nested = target.querySelector('button, div, span');
+    if (!nested) {
+      break;
+    }
+    target = nested;
+  }
+
+  target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+}
+
+function ensureOverlay() {
+  if (overlayElement) {
+    return overlayElement;
+  }
+
+  overlayElement = document.createElement('div');
+  overlayElement.id = 'whatsapp-scraper-overlay';
+  overlayElement.innerHTML = `
+    <div class="overlay-inner">
+      <div class="overlay-title">WhatsApp catalog scraper</div>
+      <div class="overlay-status" id="overlayStatus">Preparing...</div>
+      <div class="overlay-progress">
+        <span id="overlayCount">0 items</span>
+      </div>
+    </div>
+  `;
+
+  const style = document.createElement('style');
+  style.textContent = `
+    #whatsapp-scraper-overlay {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(17, 25, 40, 0.92);
+      color: #f8fafc;
+      padding: 16px 20px;
+      border-radius: 14px;
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 14px;
+      z-index: 2147483647;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+      min-width: 220px;
+    }
+    #whatsapp-scraper-overlay .overlay-title {
+      font-weight: 600;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+    #whatsapp-scraper-overlay .overlay-status {
+      font-size: 13px;
+      color: rgba(226, 232, 240, 0.85);
+      margin-bottom: 8px;
+    }
+    #whatsapp-scraper-overlay .overlay-progress {
+      font-size: 12px;
+      color: rgba(148, 163, 184, 0.8);
+    }
+  `;
+
+  document.head.appendChild(style);
+  document.body.appendChild(overlayElement);
+
+  return overlayElement;
+}
+
+function showOverlayStatus(text) {
+  ensureOverlay();
+  const statusEl = document.getElementById('overlayStatus');
+  if (statusEl) {
+    statusEl.textContent = text;
+  }
+
+  if (overlayTimer) {
+    clearTimeout(overlayTimer);
+    overlayTimer = null;
+  }
+}
+
+function updateOverlayProgress(count) {
+  const countEl = document.getElementById('overlayCount');
+  if (countEl) {
+    countEl.textContent = `${count} item${count === 1 ? '' : 's'} uploaded`;
+  }
 }
 
 function hideOverlay() {
-    if (countdownInterval) {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
-    }
-    
-    if (overlayElement) {
-        overlayElement.remove();
-        overlayElement = null;
-    }
+  if (overlayTimer) {
+    clearTimeout(overlayTimer);
+    overlayTimer = null;
+  }
+
+  if (overlayElement) {
+    overlayElement.remove();
+    overlayElement = null;
+  }
 }

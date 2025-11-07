@@ -1,394 +1,398 @@
-let excelData = null;
-let contactList = [];
-let scheduledTimeout = null;
-let countdownInterval = null;
+let currentUser = null;
+let assignedPhoneNumber = null;
+let activeSessionId = null;
+let sessionUnsubscribe = null;
+let itemsUnsubscribe = null;
+let isStartingSession = false;
 
-// Initialize popup
-document.addEventListener('DOMContentLoaded', function () {
-    initializeUI();
-    setupEventListeners();
-    setMinDateTime(); 
-    setupRuntimeMessageListener();
+document.addEventListener('DOMContentLoaded', () => {
+  bindEventListeners();
+  firebaseAuth.onAuthStateChanged(handleAuthStateChanged);
 });
 
-// Listen for runtime messages (e.g., when schedule is cancelled from background)
-function setupRuntimeMessageListener() {
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === "scheduleCancelled" || message.action === "taskCompleted") {
-            // Reset UI when schedule is cancelled or task completes
-            clearSchedule();
-            resetScheduleUI();
+function bindEventListeners() {
+  document.getElementById('loginForm').addEventListener('submit', handleLoginSubmit);
+  document.getElementById('resetPasswordButton').addEventListener('click', handlePasswordReset);
+  document.getElementById('logoutButton').addEventListener('click', handleLogout);
+  document.getElementById('startScrapeButton').addEventListener('click', handleStartScrape);
+}
 
-            if (message.action === "taskCompleted") {
-                showStatus('Task completed successfully!', 'success');
-            } else {
-                showStatus('Schedule was cancelled', 'info');
-            }
-        }
+function handleLoginSubmit(event) {
+  event.preventDefault();
+
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const loginButton = document.getElementById('loginButton');
+
+  if (!email || !password) {
+    showBanner('Please enter both email and password.', 'error');
+    return;
+  }
+
+  loginButton.disabled = true;
+  loginButton.textContent = 'Signing in...';
+
+  firebaseAuth
+    .signInWithEmailAndPassword(email, password)
+    .then(() => {
+      showBanner('Successfully signed in.', 'success');
+    })
+    .catch((error) => {
+      console.error('Login error:', error);
+      showBanner(parseFirebaseError(error), 'error');
+    })
+    .finally(() => {
+      loginButton.disabled = false;
+      loginButton.textContent = 'Sign in';
     });
 }
 
-function initializeUI() {
-    // Setup drag and drop
-    const uploadArea = document.getElementById('uploadArea');
+function handlePasswordReset() {
+  const email = document.getElementById('loginEmail').value.trim();
+  if (!email) {
+    showBanner('Enter your email first to receive a reset link.', 'error');
+    return;
+  }
 
-    uploadArea.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        uploadArea.classList.add('dragover');
-    });
-
-    uploadArea.addEventListener('dragleave', () => {
-        uploadArea.classList.remove('dragover');
-    });
-
-    uploadArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadArea.classList.remove('dragover');
-
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            document.getElementById('excelFile').files = files;
-            handleFileUpload({ target: { files: files } });
-        }
+  firebaseAuth
+    .sendPasswordResetEmail(email)
+    .then(() => {
+      showBanner('Password reset email sent. Check your inbox.', 'success');
+    })
+    .catch((error) => {
+      console.error('Password reset error:', error);
+      showBanner(parseFirebaseError(error), 'error');
     });
 }
 
-function setupEventListeners() {
-    document.getElementById('excelFile').addEventListener('change', handleFileUpload);
-    document.getElementById('startBtn').addEventListener('click', handleStartButton);
-    document.getElementById('resetBtn').addEventListener('click', resetForm);
-
-    // Schedule option handlers
-    document.querySelectorAll('.schedule-option').forEach(option => {
-        option.addEventListener('click', function () {
-            document.querySelectorAll('.schedule-option').forEach(opt => opt.classList.remove('active'));
-            this.classList.add('active');
-
-            const type = this.dataset.type;
-            const datetimeInput = document.getElementById('datetimeInput');
-            const btnText = document.getElementById('btnText');
-            const startBtn = document.getElementById('startBtn');
-
-            if (type === 'scheduled') {
-                datetimeInput.classList.add('active');
-                btnText.textContent = 'Schedule Task';
-            } else {
-                datetimeInput.classList.remove('active');
-                btnText.textContent = 'Start Scraping';
-                clearSchedule();
-            }
-
-            // Reset button state when switching modes
-            startBtn.classList.remove('btn-secondary', 'loading');
-            startBtn.classList.add('btn-primary');
-
-            // Enable/disable button based on data availability
-            if (excelData && contactList.length > 0) {
-                if (type === 'scheduled') {
-                    validateDateTime(); // This will enable/disable based on valid datetime
-                }
-            }
-        });
+function handleLogout() {
+  firebaseAuth
+    .signOut()
+    .then(() => {
+      showBanner('Signed out successfully.', 'success');
+      resetDashboardState();
+    })
+    .catch((error) => {
+      console.error('Logout error:', error);
+      showBanner(parseFirebaseError(error), 'error');
     });
-
-    // Date/time input handlers
-    document.getElementById('scheduleDate').addEventListener('change', validateDateTime);
-    document.getElementById('scheduleTime').addEventListener('change', validateDateTime);
 }
 
-function setMinDateTime() {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const currentTime = now.toTimeString().slice(0, 5);
+async function handleStartScrape() {
+  if (!currentUser || !assignedPhoneNumber) {
+    showBanner('Missing user or assigned phone number.', 'error');
+    return;
+  }
 
-    document.getElementById('scheduleDate').min = today;
-    document.getElementById('scheduleDate').value = today;
-    document.getElementById('scheduleTime').value = currentTime;
-}
- 
-function resetToInitialState() {
-    // Reset button to initial state
-    const startBtn = document.getElementById('startBtn');
-    const activeScheduleType = document.querySelector('.schedule-option.active')?.dataset.type || 'now';
+  if (isStartingSession) {
+    return;
+  }
 
-    startBtn.classList.remove('btn-secondary', 'loading');
-    startBtn.classList.add('btn-primary');
+  isStartingSession = true;
+  const startButton = document.getElementById('startScrapeButton');
+  startButton.disabled = true;
+  startButton.textContent = 'Preparing session...';
 
-    if (activeScheduleType === 'scheduled') {
-        startBtn.innerHTML = '<span id="btnText">Schedule Task</span>';
-    } else {
-        startBtn.innerHTML = '<span id="btnText">Start Scraping</span>';
-    }
+  try {
+    const sessionId = generateSessionId();
+    const userId = currentUser.uid;
+    const idToken = await currentUser.getIdToken(true);
 
-    // Ensure schedule options are in default state
-    document.querySelectorAll('.schedule-option').forEach(opt => opt.classList.remove('active'));
-    document.querySelector('.schedule-option[data-type="now"]').classList.add('active');
-    document.getElementById('datetimeInput').classList.remove('active');
+    await createSessionDocument(userId, sessionId);
+    subscribeToSessionUpdates(sessionId);
+    subscribeToItems(sessionId);
 
-    // Clear any countdowns
-    clearSchedule();
-}
-
-function validateDateTime() {
-    const dateInput = document.getElementById('scheduleDate');
-    const timeInput = document.getElementById('scheduleTime');
-    const startBtn = document.getElementById('startBtn');
-
-    if (!dateInput.value || !timeInput.value) return;
-
-    const scheduledDateTime = new Date(`${dateInput.value}T${timeInput.value}`);
-    const now = new Date();
-
-    if (scheduledDateTime <= now) {
-        showStatus('Scheduled time must be in the future', 'error');
-    } else {
-        const timeDiff = scheduledDateTime - now;
-        const hours = Math.floor(timeDiff / (1000 * 60 * 60));
-        const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-
-        showStatus(`Task will execute in ${hours}h ${minutes}m`, 'info');
-    }
-}
-
-function handleFileUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    // Show loading state
-    const uploadArea = document.getElementById('uploadArea');
-    uploadArea.style.opacity = '0.7';
-
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-
-            // Check if required sheets exist
-            const requiredSheets = ['Dealer List', 'Dealer Output', 'Dealer Image Output'];
-            const availableSheets = workbook.SheetNames;
-
-            const missingSheets = requiredSheets.filter(sheet => !availableSheets.includes(sheet));
-            if (missingSheets.length > 0) {
-                showStatus(`Missing required sheets: ${missingSheets.join(', ')}`, 'error');
-                uploadArea.style.opacity = '1';
-                return;
-            }
-
-            // Parse Dealer List sheet
-            const dealerListSheet = workbook.Sheets['Dealer List'];
-            const dealerListData = XLSX.utils.sheet_to_json(dealerListSheet);
-
-            // Extract contact list (prefer Dealer Name, fallback to Phone Number)
-            contactList = dealerListData.map(row => {
-                return row['Dealer Name'] || row['Phone Number'] || '';
-            }).filter(contact => contact.trim() !== '');
-
-            // Store the complete Excel data for later use
-            excelData = {
-                workbook: workbook,
-                dealerList: dealerListData,
-                dealerOutput: XLSX.utils.sheet_to_json(workbook.Sheets['Dealer Output']),
-                dealerImageOutput: XLSX.utils.sheet_to_json(workbook.Sheets['Dealer Image Output'])
-            };
-
-            // Update UI
-            document.getElementById('fileName').textContent = file.name;
-            document.getElementById('dealerCount').textContent = contactList.length;
-            document.getElementById('fileInfo').style.display = 'block';
-
-            // Enable start button
-            const activeScheduleType = document.querySelector('.schedule-option.active').dataset.type;
-            if (activeScheduleType === 'now') {
-                document.getElementById('startBtn').disabled = false;
-            } else {
-                validateDateTime();
-            }
-
-            uploadArea.style.opacity = '1';
-            showStatus(`File loaded successfully! Found ${contactList.length} dealers.`, 'success');
-
-        } catch (error) {
-            showStatus('Error reading Excel file. Please check the format.', 'error');
-            console.error('Excel parsing error:', error);
-            uploadArea.style.opacity = '1';
-        }
-    };
-    reader.readAsArrayBuffer(file);
-}
-
-function handleStartButton() { 
-    if (!excelData || contactList.length === 0) {
-        console.log('No excel data or contact list');
-        showStatus('Please upload a valid Excel file first.', 'error');
-        return;
-    }
-
-    const activeScheduleOption = document.querySelector('.schedule-option.active');
-    const activeScheduleType = activeScheduleOption ? activeScheduleOption.dataset.type : 'now';
-
-    console.log('Active schedule type:', activeScheduleType);
-    console.log('Button onclick handler:', document.getElementById('startBtn').onclick);
-
-    if (activeScheduleType === 'scheduled') {
-        console.log('Calling scheduleTask');
-        scheduleTask();
-    } else {
-        console.log('Calling startScraping');
-        startScraping();
-    }
-}
-
-function scheduleTask() {
-    const dateInput = document.getElementById('scheduleDate');
-    const timeInput = document.getElementById('scheduleTime');
-
-    if (!dateInput.value || !timeInput.value) {
-        showStatus('Please select date and time for scheduling', 'error');
-        return;
-    }
-
-    const scheduledDateTime = new Date(`${dateInput.value}T${timeInput.value}`);
-    const now = new Date();
-
-    if (scheduledDateTime <= now) {
-        showStatus('Scheduled time must be in the future', 'error');
-        return;
-    }
-
-    // Send schedule message to background script
     chrome.runtime.sendMessage({
-        action: "scheduleScript",
-        scheduledTime: scheduledDateTime.toISOString(),
-        contact_list: contactList,
-        excelData: excelData
+      action: 'executeScript',
+      userId,
+      userEmail: currentUser.email || '',
+      sessionId,
+      assignedPhone: assignedPhoneNumber,
+      contact_list: [assignedPhoneNumber],
+      idToken
+    }, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        console.error('Failed to dispatch executeScript:', error);
+        showBanner('Unable to start scraping. Keep the dashboard open and try again.', 'error');
+      } else {
+        showBanner('Session started. Keep WhatsApp Web open until completion.', 'success');
+      }
     });
 
-    // Start local countdown in popup (if popup stays open)
-    startCountdown(scheduledDateTime);
-
-    showStatus(`Task scheduled for ${scheduledDateTime.toLocaleString()}. You can close this popup - the task will run automatically.`, 'info');
+    activeSessionId = sessionId;
+    updateSessionLabel(sessionId);
+    updateProgressUI({ uploadedItems: 0, totalItems: 0 });
+  } catch (error) {
+    console.error('Start scraping error:', error);
+    showBanner(parseFirebaseError(error), 'error');
+  } finally {
+    isStartingSession = false;
+    startButton.disabled = false;
+    startButton.textContent = 'Start scraping';
+  }
 }
 
-function startCountdown(targetDateTime) {
-    const countdownDiv = document.getElementById('countdown');
-    const countdownTime = document.getElementById('countdownTime');
-
-    countdownDiv.classList.add('active');
-
-    countdownInterval = setInterval(() => {
-        const now = new Date();
-        const timeDiff = targetDateTime - now;
-
-        if (timeDiff <= 0) {
-            clearInterval(countdownInterval);
-            countdownDiv.classList.remove('active');
-            window.close(); // Close popup when countdown ends
-            return;
-        }
-
-        const hours = Math.floor(timeDiff / (1000 * 60 * 60));
-        const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
-
-        countdownTime.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    }, 1000);
+function handleAuthStateChanged(user) {
+  currentUser = user;
+  if (user) {
+    showDashboardView();
+    document.getElementById('userEmail').textContent = user.email || user.uid;
+    fetchAssignedPhone(user.uid)
+      .then(() => {
+        refreshLatestSession();
+      })
+      .catch((error) => {
+        console.error('Failed to fetch user profile:', error);
+        showBanner(parseFirebaseError(error), 'error');
+      });
+  } else {
+    showAuthView();
+    document.getElementById('userEmail').textContent = '-';
+    assignedPhoneNumber = null;
+    resetDashboardState();
+  }
 }
 
-function clearSchedule() {
-    if (scheduledTimeout) {
-        clearTimeout(scheduledTimeout);
-        scheduledTimeout = null;
+function showAuthView() {
+  document.getElementById('authView').classList.add('active');
+  document.getElementById('dashboardView').classList.remove('active');
+}
+
+function showDashboardView() {
+  document.getElementById('authView').classList.remove('active');
+  document.getElementById('dashboardView').classList.add('active');
+}
+
+async function fetchAssignedPhone(userId) {
+  const userDocRef = firebaseFirestore.collection('users').doc(userId);
+  const doc = await userDocRef.get();
+
+  if (!doc.exists) {
+    assignedPhoneNumber = null;
+    document.getElementById('assignedPhone').textContent = 'Unavailable';
+    document.getElementById('startScrapeButton').disabled = true;
+    throw new Error('No user profile found in Firestore.');
+  }
+
+  const data = doc.data();
+  assignedPhoneNumber = data.assignedPhone || data.phoneNumber || data.contact || null;
+
+  if (!assignedPhoneNumber) {
+    document.getElementById('assignedPhone').textContent = 'Not assigned';
+    document.getElementById('startScrapeButton').disabled = true;
+    throw new Error('No assigned phone number found in profile.');
+  }
+
+  document.getElementById('assignedPhone').textContent = assignedPhoneNumber;
+  document.getElementById('startScrapeButton').disabled = false;
+}
+
+async function createSessionDocument(userId, sessionId) {
+  const sessionRef = firebaseFirestore
+    .collection('users')
+    .doc(userId)
+    .collection('sessions')
+    .doc(sessionId);
+
+  await sessionRef.set({
+    assignedPhone: assignedPhoneNumber,
+    status: 'running',
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    uploadedItems: 0,
+    totalItems: 0
+  });
+}
+
+function subscribeToSessionUpdates(sessionId) {
+  unsubscribeActiveSession();
+  const sessionRef = firebaseFirestore
+    .collection('users')
+    .doc(currentUser.uid)
+    .collection('sessions')
+    .doc(sessionId);
+
+  sessionUnsubscribe = sessionRef.onSnapshot((snapshot) => {
+    if (!snapshot.exists) {
+      return;
     }
-
-    if (countdownInterval) {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
-    }
-
-    document.getElementById('countdown').classList.remove('active');
-}
-
-function resetScheduleUI() {
-    const startBtn = document.getElementById('startBtn');
-    const activeScheduleType = document.querySelector('.schedule-option.active')?.dataset.type || 'now';
-
-    // Reset button text based on active schedule type
-    if (activeScheduleType === 'scheduled') {
-        startBtn.innerHTML = '<span id="btnText">Schedule Task</span>';
-    } else {
-        startBtn.innerHTML = '<span id="btnText">Start Scraping</span>';
-    }
-
-    // Reset button classes and handler
-    startBtn.classList.remove('btn-secondary', 'loading');
-    startBtn.classList.add('btn-primary');
-}
-
-function startScraping() {
-    // Clear any scheduled countdown
-    clearSchedule();
-
-    // Show loading state
-    const startBtn = document.getElementById('startBtn');
-    startBtn.classList.add('loading');
-    startBtn.innerHTML = '<span>Starting...</span>';
-
-    // Send message to background script with contact list
-    chrome.runtime.sendMessage({
-        action: "executeScript",
-        contact_list: contactList,
-        excelData: excelData
+    const data = snapshot.data();
+    updateProgressUI({
+      uploadedItems: data.uploadedItems || 0,
+      totalItems: data.totalItems || 0,
+      status: data.status || 'running'
     });
-    window.close();
-}
 
-function resetForm() {
-    // Clear storage first
-    chrome.storage.local.remove('scheduledTask');
-    chrome.runtime.sendMessage({ action: "cancelSchedule" });
-
-    // Clear file input
-    document.getElementById('excelFile').value = '';
-    document.getElementById('fileInfo').style.display = 'none';
-
-    // Clear data
-    excelData = null;
-    contactList = [];
-
-    // Clear schedule
-    clearSchedule();
-
-    // Reset UI
-    document.getElementById('startBtn').disabled = true;
-    document.getElementById('startBtn').innerHTML = '<span id="btnText">Start Scraping</span>';
-    document.getElementById('startBtn').classList.remove('loading', 'btn-secondary');
-    document.getElementById('startBtn').classList.add('btn-primary'); 
-
-    // Reset schedule options
-    document.querySelectorAll('.schedule-option').forEach(opt => opt.classList.remove('active'));
-    document.querySelector('.schedule-option[data-type="now"]').classList.add('active');
-    document.getElementById('datetimeInput').classList.remove('active');
-
-    // Set current date/time
-    setMinDateTime();
-
-    // Clear status
-    document.getElementById('status').style.display = 'none';
-
-    showStatus('Form reset successfully', 'info');
-}
-
-function showStatus(message, type) {
-    const statusDiv = document.getElementById('status');
-    statusDiv.textContent = message;
-    statusDiv.className = `status ${type}`;
-    statusDiv.style.display = 'block';
-
-    // Hide after 5 seconds for success/info messages
-    if (type === 'success' || type === 'info') {
-        setTimeout(() => {
-            statusDiv.style.display = 'none';
-        }, 5000);
+    if (data.status === 'completed') {
+      showBanner('Scraping completed successfully.', 'success');
     }
+
+    if (data.status === 'failed') {
+      showBanner(data.errorMessage || 'Scraping failed.', 'error');
+    }
+  });
+}
+
+function subscribeToItems(sessionId) {
+  unsubscribeItems();
+
+  const itemsRef = firebaseFirestore
+    .collection('users')
+    .doc(currentUser.uid)
+    .collection('sessions')
+    .doc(sessionId)
+    .collection('items')
+    .orderBy('uploadedAt', 'desc');
+
+  itemsUnsubscribe = itemsRef.onSnapshot((snapshot) => {
+    const itemsContainer = document.getElementById('itemsList');
+    itemsContainer.innerHTML = '';
+
+    snapshot.forEach((doc) => {
+      const item = doc.data();
+      const div = document.createElement('div');
+      div.className = 'item-card';
+      div.innerHTML = `
+        <div class="item-title">${escapeHtml(item.name || 'Unnamed item')}</div>
+        <div class="item-meta">${escapeHtml(item.price || 'No price')}</div>
+        <div class="item-meta">${escapeHtml(item.desc || '')}</div>
+      `;
+      itemsContainer.appendChild(div);
+    });
+  });
+}
+
+function refreshLatestSession() {
+  unsubscribeActiveSession();
+  unsubscribeItems();
+  updateSessionLabel('No session');
+  updateProgressUI({ uploadedItems: 0, totalItems: 0, status: 'idle' });
+
+  firebaseFirestore
+    .collection('users')
+    .doc(currentUser.uid)
+    .collection('sessions')
+    .orderBy('createdAt', 'desc')
+    .limit(1)
+    .get()
+    .then((snapshot) => {
+      if (snapshot.empty) {
+        return;
+      }
+      const doc = snapshot.docs[0];
+      activeSessionId = doc.id;
+      updateSessionLabel(activeSessionId);
+      subscribeToSessionUpdates(activeSessionId);
+      subscribeToItems(activeSessionId);
+    })
+    .catch((error) => {
+      console.error('Unable to fetch latest session:', error);
+    });
+}
+
+function updateProgressUI({ uploadedItems, totalItems, status }) {
+  const progressFill = document.getElementById('progressFill');
+  const progressLabel = document.getElementById('progressLabel');
+  const total = totalItems || 0;
+  const uploaded = uploadedItems || 0;
+  const percentage = total > 0 ? Math.min(100, Math.round((uploaded / total) * 100)) : 0;
+
+  progressFill.style.width = `${percentage}%`;
+
+  let labelText = `Uploaded ${uploaded} item${uploaded === 1 ? '' : 's'}`;
+  if (total > 0) {
+    labelText += ` of ${total} (${percentage}%)`;
+  }
+
+  if (status === 'completed') {
+    labelText = `Completed · ${uploaded} item${uploaded === 1 ? '' : 's'} uploaded.`;
+  }
+
+  if (status === 'failed') {
+    labelText = `Upload halted after ${uploaded} item${uploaded === 1 ? '' : 's'}.`;
+  }
+
+  progressLabel.textContent = labelText;
+}
+
+function updateSessionLabel(value) {
+  document.getElementById('sessionLabel').textContent = value;
+}
+
+function unsubscribeActiveSession() {
+  if (sessionUnsubscribe) {
+    sessionUnsubscribe();
+    sessionUnsubscribe = null;
+  }
+}
+
+function unsubscribeItems() {
+  if (itemsUnsubscribe) {
+    itemsUnsubscribe();
+    itemsUnsubscribe = null;
+  }
+}
+
+function resetDashboardState() {
+  unsubscribeActiveSession();
+  unsubscribeItems();
+  activeSessionId = null;
+  updateSessionLabel('No session');
+  updateProgressUI({ uploadedItems: 0, totalItems: 0, status: 'idle' });
+  document.getElementById('assignedPhone').textContent = assignedPhoneNumber || '-';
+  document.getElementById('itemsList').innerHTML = '';
+  document.getElementById('startScrapeButton').disabled = !assignedPhoneNumber;
+}
+
+function showBanner(message, type = 'info') {
+  const banner = document.getElementById('statusBanner');
+  banner.textContent = message;
+  banner.classList.remove('error', 'success');
+  if (type === 'error') {
+    banner.classList.add('error');
+  }
+  if (type === 'success') {
+    banner.classList.add('success');
+  }
+  banner.classList.add('show');
+
+  if (type !== 'error') {
+    setTimeout(() => {
+      banner.classList.remove('show');
+      banner.classList.remove('success');
+    }, 5000);
+  }
+}
+
+function parseFirebaseError(error) {
+  if (!error || !error.code) {
+    return error?.message || 'Unexpected error occurred.';
+  }
+
+  const map = {
+    'auth/invalid-email': 'The email address is not valid.',
+    'auth/user-disabled': 'This account has been disabled.',
+    'auth/user-not-found': 'No user found with these credentials.',
+    'auth/wrong-password': 'Incorrect password. Try again.',
+    'auth/too-many-requests': 'Too many attempts. Please wait and try again.',
+    'auth/network-request-failed': 'Network error. Check your connection and retry.'
+  };
+
+  return map[error.code] || error.message || 'Unexpected Firebase error.';
+}
+
+function generateSessionId() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function escapeHtml(text) {
+  if (text === undefined || text === null) {
+    return '';
+  }
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }

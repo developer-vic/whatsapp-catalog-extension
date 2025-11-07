@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WhatsApp Catalog Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at top, #243b55 0%, #141e30 55%, #0b101a 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 32px 0;
+    }
+
+    .wrapper {
+      width: min(1024px, 92%);
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .card {
+      background: rgba(15, 23, 42, 0.9);
+      border-radius: 20px;
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      padding: 24px 26px;
+      box-shadow: 0 30px 70px rgba(0, 0, 0, 0.35);
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      background: linear-gradient(145deg, #25d366, #1a8f5d);
+      font-size: 24px;
+      font-weight: 700;
+      color: white;
+      box-shadow: 0 18px 45px rgba(37, 211, 102, 0.35);
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    p.subtitle {
+      color: rgba(226, 232, 240, 0.75);
+      font-size: 14px;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    label {
+      font-size: 13px;
+      color: rgba(226, 232, 240, 0.85);
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    input, select {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      border-radius: 12px;
+      padding: 12px 14px;
+      color: #e2e8f0;
+      font-size: 14px;
+      transition: border 0.2s ease, box-shadow 0.2s ease;
+      width: 100%;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: rgba(37, 211, 102, 0.6);
+      box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.15);
+      background: rgba(15, 23, 42, 0.95);
+    }
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: linear-gradient(145deg, #25d366, #1a8f5d);
+      color: #fff;
+      box-shadow: 0 18px 45px rgba(37, 211, 102, 0.3);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 22px 60px rgba(37, 211, 102, 0.4);
+    }
+
+    .btn-secondary {
+      background: rgba(148, 163, 184, 0.15);
+      color: rgba(226, 232, 240, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      background: rgba(148, 163, 184, 0.22);
+    }
+
+    .banner {
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      display: none;
+    }
+
+    .banner.show {
+      display: block;
+    }
+
+    .banner.success {
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      color: #bbf7d0;
+    }
+
+    .banner.error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fecaca;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+
+    thead {
+      background: rgba(30, 41, 59, 0.9);
+    }
+
+    th, td {
+      padding: 12px 14px;
+      font-size: 13px;
+      text-align: left;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    tbody tr:hover {
+      background: rgba(15, 23, 42, 0.65);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .muted {
+      color: rgba(148, 163, 184, 0.7);
+      font-size: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge-admin {
+      background: rgba(59, 130, 246, 0.18);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      color: #bfdbfe;
+    }
+
+    .badge-user {
+      background: rgba(148, 163, 184, 0.18);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      color: #e2e8f0;
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 16px 0;
+      }
+
+      .card {
+        padding: 20px;
+      }
+
+      th, td {
+        padding: 10px;
+        font-size: 12px;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="card">
+      <div class="header">
+        <div class="logo">WS</div>
+        <h1>WhatsApp Catalog Admin</h1>
+        <p class="subtitle">Manage operators, phone assignments, and scraping sessions</p>
+      </div>
+      <div id="adminSection">
+        <div class="grid">
+          <div class="card" style="padding: 20px;">
+            <h2 style="font-size: 18px; margin-bottom: 12px;">Create Operator</h2>
+            <form id="createUserForm">
+              <div>
+                <label for="newUserUsername">Username</label>
+                <input type="text" id="newUserUsername" required placeholder="Unique operator handle">
+              </div>
+              <div>
+                <label for="newUserFullName">Full Name</label>
+                <input type="text" id="newUserFullName" required placeholder="Operator full name">
+              </div>
+              <div>
+                <label for="newUserPhoneNumber">Operator Phone Number</label>
+                <input type="text" id="newUserPhoneNumber" required placeholder="+2348012345678">
+              </div>
+              <div>
+                <label for="newUserEmail">Operator Email</label>
+                <input type="email" id="newUserEmail" required placeholder="user@example.com">
+              </div>
+              <div>
+                <label for="newUserPassword">Temporary Password</label>
+                <input type="password" id="newUserPassword" minlength="6" required placeholder="Minimum 6 characters">
+              </div>
+              <div>
+                <label for="newUserAssignedPhone">Assigned Catalog Phone</label>
+                <input type="text" id="newUserAssignedPhone" required placeholder="+2348012345678">
+              </div>
+              <button type="submit" id="createUserButton" class="btn-primary">Create user</button>
+            </form>
+            <p class="muted" style="margin-top: 12px;">
+              A Firestore document is created automatically. Operator should reset their password after first sign-in.
+            </p>
+          </div>
+
+          <div class="card" style="padding: 20px;">
+            <h2 style="font-size: 18px; margin-bottom: 12px;">Assign Phone Number</h2>
+            <form id="assignPhoneForm">
+              <div>
+                <label for="assignUserSelect">Select Operator</label>
+                <select id="assignUserSelect" required>
+                  <option value="">Loading users...</option>
+                </select>
+              </div>
+              <div>
+                <label for="assignPhoneInput">Phone Number</label>
+                <input type="text" id="assignPhoneInput" placeholder="+2348012345678" required>
+              </div>
+              <button type="submit" id="assignPhoneButton" class="btn-primary">Update assignment</button>
+            </form>
+            <div class="muted" style="margin-top: 12px;">
+              The operator popup will only scrape the phone assigned here.
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="padding: 20px;">
+          <h2 style="font-size: 18px; margin-bottom: 12px;">Operators &amp; Sessions</h2>
+          <div class="muted" style="margin-bottom: 12px;">
+            All users stored in the <code>users</code> collection. Includes last session summary.
+          </div>
+          <div style="overflow-x: auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Name</th>
+                  <th>Phone</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Assigned Phone</th>
+                  <th>Last Session</th>
+                  <th>Uploaded Items</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody">
+                <tr>
+                  <td colspan="9" class="muted">Loading users...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="lib/firebase/firebase-app-compat.js"></script>
+  <script src="lib/firebase/firebase-auth-compat.js"></script>
+  <script src="lib/firebase/firebase-firestore-compat.js"></script>
+  <script src="lib/firebase/firebase-storage-compat.js"></script>
+  <script src="src/firebase-init.js"></script>
+  <script>
+    const adminSection = document.getElementById('adminSection');
+    const createUserForm = document.getElementById('createUserForm');
+    const assignPhoneForm = document.getElementById('assignPhoneForm');
+    const assignUserSelect = document.getElementById('assignUserSelect');
+    const usersTableBody = document.getElementById('usersTableBody');
+
+    let usersUnsubscribe = null;
+    let sessionsCache = {};
+    let cachedUsers = [];
+
+    createUserForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const email = document.getElementById('newUserEmail').value.trim();
+      const password = document.getElementById('newUserPassword').value;
+      const assignedPhone = document.getElementById('newUserAssignedPhone').value.trim();
+      const username = document.getElementById('newUserUsername').value.trim();
+      const fullName = document.getElementById('newUserFullName').value.trim();
+      const phoneNumber = document.getElementById('newUserPhoneNumber').value.trim();
+      const button = document.getElementById('createUserButton');
+
+      if (!email || !password || !assignedPhone || !username || !fullName || !phoneNumber) {
+        showBanner('Provide username, name, email, password, and phone numbers.', 'error');
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = 'Creating...';
+
+      try {
+        let secondaryApp;
+        try {
+          secondaryApp = firebase.app('SecondaryAdmin');
+        } catch (err) {
+          secondaryApp = firebase.initializeApp(firebase.app().options, 'SecondaryAdmin');
+        }
+        const secondaryAuth = secondaryApp.auth();
+
+        const credential = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+        const newUserId = credential.user.uid;
+
+        const docData = {
+          email,
+          role: 'user',
+          username,
+          name: fullName,
+          phoneNumber,
+          assignedPhone,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await firebaseFirestore.collection('users').doc(newUserId).set(docData, { merge: true });
+
+        await secondaryAuth.signOut();
+
+        upsertCachedUser({
+          id: newUserId,
+          email,
+          role: 'user',
+          username,
+          name: fullName,
+          phoneNumber,
+          assignedPhone
+        });
+
+        showBanner(`User ${email} created successfully.`, 'success');
+        createUserForm.reset();
+        await sendPasswordReset(email);
+      } catch (error) {
+        console.error('Create user error:', error);
+        showBanner(parseFirebaseError(error), 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Create user';
+      }
+    });
+
+    assignPhoneForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const userId = assignUserSelect.value;
+      const phone = document.getElementById('assignPhoneInput').value.trim();
+      const button = document.getElementById('assignPhoneButton');
+
+      if (!userId || !phone) {
+        showBanner('Select a user and provide a phone number.', 'error');
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = 'Updating...';
+
+      try {
+        await firebaseFirestore.collection('users').doc(userId).set({ assignedPhone: phone }, { merge: true });
+        showBanner('Phone number updated.', 'success');
+        assignPhoneForm.reset();
+      } catch (error) {
+        console.error('Assign phone error:', error);
+        showBanner(parseFirebaseError(error), 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Update assignment';
+      }
+    });
+
+    function startUsersListener() {
+      stopUsersListener();
+      usersUnsubscribe = firebaseFirestore.collection('users')
+        .orderBy('email', 'asc')
+        .onSnapshot(async (snapshot) => {
+          const users = [];
+          snapshot.forEach((doc) => {
+            users.push({ id: doc.id, ...doc.data() });
+          });
+          cachedUsers = users;
+          await populateSessions(cachedUsers);
+          renderUsers(cachedUsers);
+          populateAssignSelect(cachedUsers);
+        }, (error) => {
+          console.error('Users listener error:', error);
+          showBanner(parseFirebaseError(error), 'error');
+        });
+    }
+    startUsersListener();
+
+    function stopUsersListener() {
+      if (usersUnsubscribe) {
+        usersUnsubscribe();
+        usersUnsubscribe = null;
+      }
+    }
+
+    async function populateSessions(users) {
+      const promises = users.map(async (user) => {
+        const sessionsSnapshot = await firebaseFirestore.collection('users').doc(user.id)
+          .collection('sessions')
+          .orderBy('createdAt', 'desc')
+          .limit(1)
+          .get();
+
+        const session = sessionsSnapshot.docs[0]?.data();
+        sessionsCache[user.id] = session;
+      });
+
+      await Promise.all(promises);
+    }
+
+    function renderUsers(users) {
+      if (!users.length) {
+        usersTableBody.innerHTML = '<tr><td colspan="9" class="muted">No users found. Create an operator to get started.</td></tr>';
+        return;
+      }
+
+      usersTableBody.innerHTML = '';
+      users.forEach((user) => {
+        const row = document.createElement('tr');
+        const assignedPhone = user.assignedPhone || '—';
+        const role = user.role || 'user';
+        const session = sessionsCache[user.id];
+        const sessionLabel = session
+          ? (session.status || 'unknown') + (session.createdAt?.toDate ? ` · ${session.createdAt.toDate().toLocaleString()}` : '')
+          : 'No sessions';
+        const uploaded = session ? `${session.uploadedItems || 0}/${session.totalItems || 0}` : '—';
+
+        row.innerHTML = `
+          <td>
+            <div>${user.username || '—'}</div>
+          </td>
+          <td>
+            <div>${user.name || '—'}</div>
+          </td>
+          <td>
+            <div>${user.phoneNumber || '—'}</div>
+          </td>
+          <td>
+            <div>${user.email || user.id}</div>
+            <div class="muted" style="margin-top: 4px;">${user.id}</div>
+          </td>
+          <td>
+            <span class="badge ${role === 'admin' ? 'badge-admin' : 'badge-user'}">${role}</span>
+          </td>
+          <td>${assignedPhone}</td>
+          <td>${sessionLabel}</td>
+          <td>${uploaded}</td>
+          <td>
+            <div class="actions">
+              <button class="btn-secondary" data-action="assign" data-id="${user.id}" data-email="${user.email || ''}" data-phone="${assignedPhone}">Assign phone</button>
+              <button class="btn-secondary" data-action="reset" data-email="${user.email || ''}">Send reset email</button>
+            </div>
+          </td>
+        `;
+        usersTableBody.appendChild(row);
+      });
+
+      usersTableBody.querySelectorAll('button').forEach((button) => {
+        button.addEventListener('click', handleUserAction);
+      });
+    }
+
+    function populateAssignSelect(users) {
+      assignUserSelect.innerHTML = '';
+      if (!users.length) {
+        assignUserSelect.innerHTML = '<option value="">No users available</option>';
+        return;
+      }
+
+      assignUserSelect.innerHTML = '<option value="">Select operator</option>';
+      users.forEach((user) => {
+        const option = document.createElement('option');
+        option.value = user.id;
+        const labelParts = [
+          user.username || null,
+          user.name || null,
+          user.email || user.id
+        ].filter(Boolean);
+        option.textContent = `${labelParts.join(' · ')} (${user.assignedPhone || 'No assigned phone'})`;
+        assignUserSelect.appendChild(option);
+      });
+    }
+
+    function handleUserAction(event) {
+      const action = event.currentTarget.dataset.action;
+      const userId = event.currentTarget.dataset.id;
+      const email = event.currentTarget.dataset.email;
+      const phone = event.currentTarget.dataset.phone;
+
+      if (action === 'assign') {
+        assignUserSelect.value = userId || '';
+        document.getElementById('assignPhoneInput').value = phone && phone !== '—' ? phone : '';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      if (action === 'reset') {
+        if (!email) {
+          showBanner('Unable to send reset email: address missing.', 'error');
+          return;
+        }
+        sendPasswordReset(email);
+      }
+    }
+
+    function sendPasswordReset(email) {
+      return firebaseAuth.sendPasswordResetEmail(email)
+        .then(() => {
+          showBanner(`Password reset email sent to ${email}.`, 'success');
+        })
+        .catch((error) => {
+          console.error('Password reset error:', error);
+          showBanner(parseFirebaseError(error), 'error');
+        });
+    }
+
+    function showBanner(message, type = 'info') {
+      if (type === 'error') {
+        console.error(message);
+      } else {
+        console.log(message);
+      }
+      alert(message);
+    }
+
+    function upsertCachedUser(user) {
+      const index = cachedUsers.findIndex((u) => u.id === user.id);
+      if (index === -1) {
+        cachedUsers.push(user);
+      } else {
+        cachedUsers[index] = { ...cachedUsers[index], ...user };
+      }
+      renderUsers(cachedUsers);
+      populateAssignSelect(cachedUsers);
+    }
+
+    function parseFirebaseError(error) {
+      if (!error) return 'Unexpected error occurred.';
+      if (error.code) {
+        const map = {
+          'auth/invalid-email': 'The email address is invalid.',
+          'auth/user-disabled': 'This account has been disabled.',
+          'auth/user-not-found': 'Account not found.',
+          'auth/wrong-password': 'Incorrect password.',
+          'auth/weak-password': 'Password is too weak.',
+          'auth/email-already-in-use': 'Email already registered.',
+          'auth/operation-not-allowed': 'Operation not allowed. Check Firebase auth settings.',
+          'auth/too-many-requests': 'Too many attempts. Try again later.',
+          'auth/network-request-failed': 'Network error. Check connectivity.'
+        };
+        return map[error.code] || error.message || 'Unexpected Firebase error.';
+      }
+      return typeof error === 'string' ? error : (error.message || 'Unexpected error occurred.');
+    }
+  </script>
+</body>
+</html>
+
