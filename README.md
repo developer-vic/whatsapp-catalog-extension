@@ -1,84 +1,65 @@
 # WhatsApp Catalog Scraper Extension
 
-A Chrome browser extension that automates the extraction of product catalogs from WhatsApp Web contacts, streamlining business data collection and organization.
+Chrome extension that automates WhatsApp Web catalog collection and uploads finished results to Firebase in a single batch.
 
-## Features
+## Key Features
 
-- **Automated Catalog Extraction**: Automatically searches WhatsApp Web contacts and extracts their business catalogs
-- **Excel Integration**: Upload dealer contact lists and export comprehensive reports
-- **Image Management**: Downloads and organizes product images with structured folder hierarchy
-- **Professional Reports**: Generates detailed Excel reports with three organized sheets
-- **Hands-free Operation**: Fully automated process once initiated
+- **Single-contact scraping** driven by the phone number assigned to the signed-in operator.
+- **Automated WhatsApp navigation** with an in-page overlay that shows progress while products are captured.
+- **Single-shot upload**: product data is sent to Firestore only after scraping completes, avoiding partially synced sessions.
+- **Firebase-integrated dashboard**: operators authenticate with Firebase Auth and see completion status in the popup once the batch upload is done.
 
-## How to Use
+## Usage
 
-1. **Load Extension**: Install the extension in Chrome browser
-2. **Prepare Excel File**: Create an Excel file with three sheets:
-   - **Dealer List**: Contains `Dealer Name` and `Phone Number` columns
-   - **Dealer Output**: Template for product details
-   - **Dealer Image Output**: Template for image paths
-3. **Upload & Execute**: Open WhatsApp Web, click the extension icon, upload your Excel file, and start scraping
-4. **Download Results**: Receive organized folders with images and a comprehensive Excel report
+1. **Install**  
+   - Clone or download the repo.  
+   - In Chrome, open `chrome://extensions`, enable *Developer mode*, choose **Load unpacked**, and select this project directory.
 
-## Project Structure
+2. **Sign in**  
+   - Open the extension popup.  
+   - Sign in with your Firebase Auth credentials.  
+   - The popup shows the phone number assigned to your account.
+
+3. **Start scraping**  
+   - Make sure you are logged in to [web.whatsapp.com](https://web.whatsapp.com) in a browser tab.  
+   - Click **Start scraping** in the popup. The popup closes automatically.  
+   - The content script opens the assigned contact’s catalog and scrapes every product.
+
+4. **Wait for completion**  
+   - Watch the overlay inside WhatsApp Web for progress.  
+   - When the process finishes, the extension uploads items to `users/{uid}/sessions/{sessionId}` and then notifies the background script.  
+   - Reopen the popup to view updated totals and the list of scraped items.
+
+## Data Flow
+
+```
+popup.js        -> creates session document, triggers scraping
+background.js   -> tracks active session and uploads data after completion
+content.js      -> scrapes WhatsApp catalog, returns aggregated results once, no streaming updates
+Firestore       -> stores session metadata and scraped items
+```
+
+## Requirements
+
+- Chrome (Manifest V3)
+- Firebase project with Auth and Firestore
+- WhatsApp Web account with catalog access for the assigned contact
+
+## Repository Layout
 
 ```
 whatsapp-catalog-extension/
-├── src/                    # Source code files
-│   ├── background.js       # Background service worker
-│   ├── content.js          # Content script for WhatsApp Web
-│   ├── popup.html          # Extension popup interface
-│   └── popup.js           # Popup functionality
-├── assets/
-│   └── icons/             # Extension icons (16x16, 32x32, 48x48, 128x128)
-├── lib/                   # Third-party libraries
-│   ├── xlsx.full.min.js   # Excel processing library
-│   └── jszip.min.js       # ZIP file creation library
-├── docs/                  # Documentation
-├── manifest.json          # Extension configuration
-└── README.md             # This file
+├── src/
+│   ├── background.js     # background worker handling Firebase writes
+│   ├── content.js        # WhatsApp Web scraper and overlay
+│   ├── popup.js          # popup UI and Firebase Auth integration
+│   └── firebase-init.js  # Firebase configuration (not checked in)
+├── lib/                  # Firebase compat SDK bundles
+├── manifest.json         # extension manifest
+├── admin.html            # optional admin UI
+└── README.md
 ```
-
-## Output Structure
-
-### Folder Organization
-```
-Downloads/
-└── [YYYY-MM-DDTHH-MM-SS]/
-    └── [Contact_Name]/
-        └── [Product_Name]/
-            ├── img1.jpg
-            ├── img2.jpg
-            └── ...
-```
-
-### Excel Report
-- **Sheet 1**: Original dealer list (unchanged)
-- **Sheet 2**: Product details (name, description, price, details)
-- **Sheet 3**: Image file paths and references
-
-## Technical Requirements
-
-- Chrome Browser (Manifest V3 compatible)
-- WhatsApp Web access
-- Excel file with proper structure
-
-## Installation
-
-1. Download or clone this repository
-2. Open Chrome and navigate to `chrome://extensions/`
-3. Enable "Developer mode"
-4. Click "Load unpacked" and select the project directory
-5. The extension will appear in your Chrome toolbar
 
 ## Support
 
-For issues or questions, please refer to the documentation in the `docs/` folder or contact the development team.
-
-## Version
-
-Current Version: 1.0
-
----
-
-© 2025 WhatsApp Catalog Scraper Extension. Professional business automation tool.
+Report issues or feature requests via the project tracker, or contact the engineering team managing the Firebase project.

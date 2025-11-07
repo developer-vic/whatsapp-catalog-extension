@@ -73,7 +73,7 @@ function dispatchStartExecution(tabId, payload, sendResponse) {
     sessionDateTime: payload.sessionId
   }, () => {
     if (chrome.runtime.lastError) {
-      console.error('Failed to start execution:', chrome.runtime.lastError);
+      console.log('Failed to start execution:', chrome.runtime.lastError);
       sendResponse({ ok: false, error: chrome.runtime.lastError.message });
     } else {
       sendResponse({ ok: true });
@@ -143,7 +143,7 @@ async function handleScrapingCompleted(message) {
       totalItems
     });
   } catch (error) {
-    console.error('Failed to finalize scraping results:', error);
+    console.log('Failed to finalize scraping results:', error);
     await updateSessionStatus('failed', { errorMessage: error.message });
   } finally {
     activeSessionContext = null;

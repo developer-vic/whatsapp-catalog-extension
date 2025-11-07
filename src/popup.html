@@ -22,8 +22,8 @@
     .container {
       background: rgba(17, 25, 40, 0.9);
       border-radius: 18px;
-      margin: 18px;
-      padding: 26px 24px;
+      margin: 10px;
+      padding: 20px 18px;
       box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
       border: 1px solid rgba(255, 255, 255, 0.05);
       display: flex;
@@ -160,7 +160,6 @@
     }
 
     .info-row {
-      display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 12px;
@@ -296,14 +295,14 @@
           <span class="info-value" id="userEmail">-</span>
         </div>
         <div class="info-row">
-          <span class="info-label">Assigned contact</span>
+          <span class="info-label">Assigned Number</span>
           <span class="info-value" id="assignedPhone">-</span>
         </div>
         <button type="button" id="startScrapeButton" class="btn-primary" style="width: 100%; margin-top: 12px;">Start scraping</button>
       </div>
 
       <div class="card">
-        <div class="info-row" style="margin-bottom: 16px;">
+        <div class="info-row" style="margin-bottom: 16px; display: flex;">
           <span class="info-label">Active session</span>
           <span class="info-value" id="sessionLabel">No session</span>
         </div>

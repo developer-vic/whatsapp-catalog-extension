@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
 chrome.runtime.onMessage.addListener((message) => {
   if (message.action === 'sessionCompleted') {
     handleSessionCompleted(message).catch((error) => {
-      console.error('Unable to handle completed session notification:', error);
+      console.log('Unable to handle completed session notification:', error);
     });
   }
 });
@@ -44,7 +44,7 @@ function handleLoginSubmit(event) {
       showBanner('Successfully signed in.', 'success');
     })
     .catch((error) => {
-      console.error('Login error:', error);
+      console.log('Login error:', error);
       showBanner(parseFirebaseError(error), 'error');
     })
     .finally(() => {
@@ -66,7 +66,7 @@ function handlePasswordReset() {
       showBanner('Password reset email sent. Check your inbox.', 'success');
     })
     .catch((error) => {
-      console.error('Password reset error:', error);
+      console.log('Password reset error:', error);
       showBanner(parseFirebaseError(error), 'error');
     });
 }
@@ -79,7 +79,7 @@ function handleLogout() {
       resetDashboardState();
     })
     .catch((error) => {
-      console.error('Logout error:', error);
+      console.log('Logout error:', error);
       showBanner(parseFirebaseError(error), 'error');
     });
 }
@@ -116,7 +116,7 @@ async function handleStartScrape() {
     }, () => {
       const error = chrome.runtime.lastError;
       if (error) {
-        console.error('Failed to dispatch executeScript:', error);
+        console.log('Failed to dispatch executeScript:', error);
         showBanner('Unable to start scraping. Keep the dashboard open and try again.', 'error');
       } else {
         showBanner('Session started. Keep WhatsApp Web open until completion.', 'success');
@@ -129,7 +129,7 @@ async function handleStartScrape() {
     window.close();
 
   } catch (error) {
-    console.error('Start scraping error:', error);
+    console.log('Start scraping error:', error);
     showBanner(parseFirebaseError(error), 'error');
   } finally {
     isStartingSession = false;
@@ -163,7 +163,7 @@ function handleAuthStateChanged(user) {
         refreshLatestSession();
       })
       .catch((error) => {
-        console.error('Failed to fetch user profile:', error);
+        console.log('Failed to fetch user profile:', error);
         showBanner(parseFirebaseError(error), 'error');
       });
   } else {
@@ -246,7 +246,7 @@ function refreshLatestSession() {
       updateSessionData(activeSessionId, doc.data());
     })
     .catch((error) => {
-      console.error('Unable to fetch latest session:', error);
+      console.log('Unable to fetch latest session:', error);
     });
 }
 
@@ -300,7 +300,7 @@ async function fetchSessionDocument(sessionId) {
 
     return snapshot.data();
   } catch (error) {
-    console.error('Unable to fetch session details:', error);
+    console.log('Unable to fetch session details:', error);
     return null;
   }
 }
@@ -335,7 +335,7 @@ async function loadSessionItems(sessionId) {
       itemsContainer.appendChild(div);
     });
   } catch (error) {
-    console.error('Unable to load session items:', error);
+    console.log('Unable to load session items:', error);
     clearItemsList();
   }
 }

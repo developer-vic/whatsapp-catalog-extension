@@ -16,7 +16,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true });
       })
       .catch((error) => {
-        console.error('Failed to execute scraper:', error);
+        console.log('Failed to execute scraper:', error);
         sendResponse({ ok: false, error: error.message });
         chrome.runtime.sendMessage({ action: 'scrapingFailed', error: error.message });
         hideOverlay();
@@ -119,7 +119,7 @@ async function scrapeContactCatalog(contactName) {
 
     return items;
   } catch (error) {
-    console.error(`Error while scraping contact ${contactName}:`, error);
+    console.log(`Error while scraping contact ${contactName}:`, error);
     return [];
   }
 }

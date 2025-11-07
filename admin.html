@@ -418,7 +418,7 @@
         createUserForm.reset();
         await sendPasswordReset(email);
       } catch (error) {
-        console.error('Create user error:', error);
+        console.log('Create user error:', error);
         showBanner(parseFirebaseError(error), 'error');
       } finally {
         button.disabled = false;
@@ -446,7 +446,7 @@
         showBanner('Phone number updated.', 'success');
         assignPhoneForm.reset();
       } catch (error) {
-        console.error('Assign phone error:', error);
+        console.log('Assign phone error:', error);
         showBanner(parseFirebaseError(error), 'error');
       } finally {
         button.disabled = false;
@@ -468,7 +468,7 @@
           renderUsers(cachedUsers);
           populateAssignSelect(cachedUsers);
         }, (error) => {
-          console.error('Users listener error:', error);
+          console.log('Users listener error:', error);
           showBanner(parseFirebaseError(error), 'error');
         });
     }
@@ -596,14 +596,14 @@
           showBanner(`Password reset email sent to ${email}.`, 'success');
         })
         .catch((error) => {
-          console.error('Password reset error:', error);
+          console.log('Password reset error:', error);
           showBanner(parseFirebaseError(error), 'error');
         });
     }
 
     function showBanner(message, type = 'info') {
       if (type === 'error') {
-        console.error(message);
+        console.log(message);
       } else {
         console.log(message);
       }
