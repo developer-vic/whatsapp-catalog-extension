@@ -1,13 +1,19 @@
 let currentUser = null;
 let assignedPhoneNumber = null;
 let activeSessionId = null;
-let sessionUnsubscribe = null;
-let itemsUnsubscribe = null;
 let isStartingSession = false;
 
 document.addEventListener('DOMContentLoaded', () => {
   bindEventListeners();
   firebaseAuth.onAuthStateChanged(handleAuthStateChanged);
+});
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.action === 'sessionCompleted') {
+    handleSessionCompleted(message).catch((error) => {
+      console.error('Unable to handle completed session notification:', error);
+    });
+  }
 });
 
 function bindEventListeners() {
@@ -99,8 +105,6 @@ async function handleStartScrape() {
     const idToken = await currentUser.getIdToken(true);
 
     await createSessionDocument(userId, sessionId);
-    subscribeToSessionUpdates(sessionId);
-    subscribeToItems(sessionId);
 
     chrome.runtime.sendMessage({
       action: 'executeScript',
@@ -108,7 +112,6 @@ async function handleStartScrape() {
       userEmail: currentUser.email || '',
       sessionId,
       assignedPhone: assignedPhoneNumber,
-      contact_list: [assignedPhoneNumber],
       idToken
     }, () => {
       const error = chrome.runtime.lastError;
@@ -123,6 +126,8 @@ async function handleStartScrape() {
     activeSessionId = sessionId;
     updateSessionLabel(sessionId);
     updateProgressUI({ uploadedItems: 0, totalItems: 0 });
+    window.close();
+
   } catch (error) {
     console.error('Start scraping error:', error);
     showBanner(parseFirebaseError(error), 'error');
@@ -131,6 +136,21 @@ async function handleStartScrape() {
     startButton.disabled = false;
     startButton.textContent = 'Start scraping';
   }
+}
+
+async function handleSessionCompleted(message) {
+  if (!currentUser || currentUser.uid !== message.userId) {
+    return;
+  }
+
+  const { sessionId } = message;
+  if (!sessionId) {
+    return;
+  }
+
+  activeSessionId = sessionId;
+  updateSessionLabel(sessionId);
+  await updateSessionData(sessionId);
 }
 
 function handleAuthStateChanged(user) {
@@ -204,69 +224,10 @@ async function createSessionDocument(userId, sessionId) {
   });
 }
 
-function subscribeToSessionUpdates(sessionId) {
-  unsubscribeActiveSession();
-  const sessionRef = firebaseFirestore
-    .collection('users')
-    .doc(currentUser.uid)
-    .collection('sessions')
-    .doc(sessionId);
-
-  sessionUnsubscribe = sessionRef.onSnapshot((snapshot) => {
-    if (!snapshot.exists) {
-      return;
-    }
-    const data = snapshot.data();
-    updateProgressUI({
-      uploadedItems: data.uploadedItems || 0,
-      totalItems: data.totalItems || 0,
-      status: data.status || 'running'
-    });
-
-    if (data.status === 'completed') {
-      showBanner('Scraping completed successfully.', 'success');
-    }
-
-    if (data.status === 'failed') {
-      showBanner(data.errorMessage || 'Scraping failed.', 'error');
-    }
-  });
-}
-
-function subscribeToItems(sessionId) {
-  unsubscribeItems();
-
-  const itemsRef = firebaseFirestore
-    .collection('users')
-    .doc(currentUser.uid)
-    .collection('sessions')
-    .doc(sessionId)
-    .collection('items')
-    .orderBy('uploadedAt', 'desc');
-
-  itemsUnsubscribe = itemsRef.onSnapshot((snapshot) => {
-    const itemsContainer = document.getElementById('itemsList');
-    itemsContainer.innerHTML = '';
-
-    snapshot.forEach((doc) => {
-      const item = doc.data();
-      const div = document.createElement('div');
-      div.className = 'item-card';
-      div.innerHTML = `
-        <div class="item-title">${escapeHtml(item.name || 'Unnamed item')}</div>
-        <div class="item-meta">${escapeHtml(item.price || 'No price')}</div>
-        <div class="item-meta">${escapeHtml(item.desc || '')}</div>
-      `;
-      itemsContainer.appendChild(div);
-    });
-  });
-}
-
 function refreshLatestSession() {
-  unsubscribeActiveSession();
-  unsubscribeItems();
   updateSessionLabel('No session');
   updateProgressUI({ uploadedItems: 0, totalItems: 0, status: 'idle' });
+  clearItemsList();
 
   firebaseFirestore
     .collection('users')
@@ -282,12 +243,108 @@ function refreshLatestSession() {
       const doc = snapshot.docs[0];
       activeSessionId = doc.id;
       updateSessionLabel(activeSessionId);
-      subscribeToSessionUpdates(activeSessionId);
-      subscribeToItems(activeSessionId);
+      updateSessionData(activeSessionId, doc.data());
     })
     .catch((error) => {
       console.error('Unable to fetch latest session:', error);
     });
+}
+
+async function updateSessionData(sessionId, initialData) {
+  if (!currentUser) {
+    return;
+  }
+
+  let data = initialData || null;
+  const previousStatus = initialData?.status;
+
+  if (!data) {
+    data = await fetchSessionDocument(sessionId);
+  }
+
+  if (!data) {
+    return;
+  }
+
+  updateProgressUI({
+    uploadedItems: data.uploadedItems || 0,
+    totalItems: data.totalItems || 0,
+    status: data.status || 'running'
+  });
+
+  if (data.status === 'completed') {
+    if (previousStatus !== 'completed') {
+      showBanner('Scraping completed successfully.', 'success');
+    }
+    await loadSessionItems(sessionId);
+  } else if (data.status === 'failed') {
+    showBanner(data.errorMessage || 'Scraping failed.', 'error');
+    clearItemsList();
+  } else {
+    clearItemsList();
+  }
+}
+
+async function fetchSessionDocument(sessionId) {
+  try {
+    const sessionRef = firebaseFirestore
+      .collection('users')
+      .doc(currentUser.uid)
+      .collection('sessions')
+      .doc(sessionId);
+
+    const snapshot = await sessionRef.get();
+    if (!snapshot.exists) {
+      return null;
+    }
+
+    return snapshot.data();
+  } catch (error) {
+    console.error('Unable to fetch session details:', error);
+    return null;
+  }
+}
+
+async function loadSessionItems(sessionId) {
+  if (!currentUser) {
+    return;
+  }
+
+  try {
+    const itemsRef = firebaseFirestore
+      .collection('users')
+      .doc(currentUser.uid)
+      .collection('sessions')
+      .doc(sessionId)
+      .collection('items')
+      .orderBy('uploadedAt', 'desc');
+
+    const snapshot = await itemsRef.get();
+    const itemsContainer = document.getElementById('itemsList');
+    itemsContainer.innerHTML = '';
+
+    snapshot.forEach((doc) => {
+      const item = doc.data();
+      const div = document.createElement('div');
+      div.className = 'item-card';
+      div.innerHTML = `
+        <div class="item-title">${escapeHtml(item.name || 'Unnamed item')}</div>
+        <div class="item-meta">${escapeHtml(item.price || 'No price')}</div>
+        <div class="item-meta">${escapeHtml(item.desc || '')}</div>
+      `;
+      itemsContainer.appendChild(div);
+    });
+  } catch (error) {
+    console.error('Unable to load session items:', error);
+    clearItemsList();
+  }
+}
+
+function clearItemsList() {
+  const itemsContainer = document.getElementById('itemsList');
+  if (itemsContainer) {
+    itemsContainer.innerHTML = '';
+  }
 }
 
 function updateProgressUI({ uploadedItems, totalItems, status }) {
@@ -319,28 +376,12 @@ function updateSessionLabel(value) {
   document.getElementById('sessionLabel').textContent = value;
 }
 
-function unsubscribeActiveSession() {
-  if (sessionUnsubscribe) {
-    sessionUnsubscribe();
-    sessionUnsubscribe = null;
-  }
-}
-
-function unsubscribeItems() {
-  if (itemsUnsubscribe) {
-    itemsUnsubscribe();
-    itemsUnsubscribe = null;
-  }
-}
-
 function resetDashboardState() {
-  unsubscribeActiveSession();
-  unsubscribeItems();
   activeSessionId = null;
   updateSessionLabel('No session');
   updateProgressUI({ uploadedItems: 0, totalItems: 0, status: 'idle' });
   document.getElementById('assignedPhone').textContent = assignedPhoneNumber || '-';
-  document.getElementById('itemsList').innerHTML = '';
+  clearItemsList();
   document.getElementById('startScrapeButton').disabled = !assignedPhoneNumber;
 }
 

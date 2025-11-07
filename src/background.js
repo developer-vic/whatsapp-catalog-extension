@@ -24,12 +24,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'executeScript':
       handleStartScraping(message, sender, sendResponse);
       return true;
-    case 'catalogItemScraped':
-      handleCatalogItem(message).catch((error) => {
-        console.error('Failed to upload catalog item:', error);
-        updateSessionStatus('failed', { errorMessage: error.message });
-      });
-      break;
     case 'scrapingCompleted':
       handleScrapingCompleted(message);
       break;
@@ -75,7 +69,7 @@ function handleStartScraping(payload, sender, sendResponse) {
 function dispatchStartExecution(tabId, payload, sendResponse) {
   chrome.tabs.sendMessage(tabId, {
     action: 'startExecution',
-    contact_list: payload.contact_list,
+    assignedPhone: payload.assignedPhone,
     sessionDateTime: payload.sessionId
   }, () => {
     if (chrome.runtime.lastError) {
@@ -87,57 +81,73 @@ function dispatchStartExecution(tabId, payload, sendResponse) {
   });
 }
 
-async function handleCatalogItem(message) {
+async function handleScrapingCompleted(message) {
   if (!activeSessionContext) {
-    console.warn('Received catalog item without active session.');
+    console.warn('Scraping completed without active session context.');
     return;
   }
 
   const { userId, sessionId } = activeSessionContext;
-  const { contact, item, totalItems } = message;
+  const results = Array.isArray(message?.results) ? message.results : [];
+  const summary = message?.summary || {};
 
-  activeSessionContext.uploaded += 1;
-  if (typeof totalItems === 'number') {
-    activeSessionContext.total = totalItems;
-  } else if (activeSessionContext.uploaded > activeSessionContext.total) {
-    activeSessionContext.total = activeSessionContext.uploaded;
-  }
-
-  await firestoreAddDocument(
-    `users/${userId}/sessions/${sessionId}/items`,
-    {
-      contact,
-      name: item.name,
-      desc: item.desc,
-      price: item.price,
-      description: item.description,
-      uploadedAt: new Date().toISOString()
-    }
-  );
-
-  await firestorePatchDocument(
-    `users/${userId}/sessions/${sessionId}`,
-    {
-      uploadedItems: activeSessionContext.uploaded,
-      totalItems: activeSessionContext.total,
-      lastUploadedAt: new Date().toISOString()
-    }
-  );
-}
-
-function handleScrapingCompleted(message) {
-  if (activeSessionContext && message?.summary) {
-    activeSessionContext.total = message.summary.totalItems || activeSessionContext.total;
-    activeSessionContext.uploaded = message.summary.totalItems || activeSessionContext.uploaded;
-  }
-
-  updateSessionStatus('completed', {
-    completedAt: new Date().toISOString(),
-    totalItems: activeSessionContext ? activeSessionContext.total : undefined,
-    uploadedItems: activeSessionContext ? activeSessionContext.uploaded : undefined
+  const flattenedItems = [];
+  results.forEach((entry) => {
+    const contact = entry?.contact;
+    const items = Array.isArray(entry?.items) ? entry.items : [];
+    items.forEach((item) => {
+      flattenedItems.push({
+        contact: contact || '',
+        name: item?.name || '',
+        desc: item?.desc || '',
+        price: item?.price || '',
+        description: item?.description || ''
+      });
+    });
   });
 
-  activeSessionContext = null;
+  const totalItems = typeof summary.totalItems === 'number' ? summary.totalItems : flattenedItems.length;
+  const totalContacts = typeof summary.totalContacts === 'number' ? summary.totalContacts : results.length;
+  const timestamp = new Date().toISOString();
+
+  try {
+    for (const item of flattenedItems) {
+      await firestoreAddDocument(
+        `users/${userId}/sessions/${sessionId}/items`,
+        {
+          contact: item.contact,
+          name: item.name,
+          desc: item.desc,
+          price: item.price,
+          description: item.description,
+          uploadedAt: timestamp
+        }
+      );
+    }
+
+    activeSessionContext.uploaded = totalItems;
+    activeSessionContext.total = totalItems;
+
+    await updateSessionStatus('completed', {
+      completedAt: timestamp,
+      lastUploadedAt: timestamp,
+      totalItems,
+      uploadedItems: totalItems,
+      totalContacts
+    });
+
+    chrome.runtime.sendMessage({
+      action: 'sessionCompleted',
+      sessionId,
+      userId,
+      totalItems
+    });
+  } catch (error) {
+    console.error('Failed to finalize scraping results:', error);
+    await updateSessionStatus('failed', { errorMessage: error.message });
+  } finally {
+    activeSessionContext = null;
+  }
 }
 
 async function updateSessionStatus(status, extraFields = {}) {

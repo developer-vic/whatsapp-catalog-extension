@@ -1,15 +1,15 @@
 // Firebase initialization shared between popup and background scripts
 
 // Ensure Firebase SDKs are loaded before this script
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyDSliEIQdxBhYrL6o9TZ4EEQIF6-PIzAJU",
-  authDomain: "developervicc.firebaseapp.com",
-  databaseURL: "https://developervicc-default-rtdb.firebaseio.com",
-  projectId: "developervicc",
-  storageBucket: "developervicc.appspot.com",
-  messagingSenderId: "173684640461",
-  appId: "1:173684640461:web:cce14b9c0260e48835f784",
-  measurementId: "G-JJ05VLE30M"
+  apiKey: "AIzaSyBXbzHXTKbT5qwPw9N8TJLIk5QSREDRc8U",
+  authDomain: "catalog-uploader.firebaseapp.com",
+  projectId: "catalog-uploader",
+  storageBucket: "catalog-uploader.firebasestorage.app",
+  messagingSenderId: "451635953611",
+  appId: "1:451635953611:web:1bf7325aad0db15a6c004e",
+  measurementId: "G-CTSS0ZX6LM"
 };
 
 if (typeof firebase === 'undefined') {

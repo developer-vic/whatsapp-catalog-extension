@@ -5,33 +5,40 @@ let overlayElement = null;
 let overlayTimer = null;
 let uploadedCount = 0;
 
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'startExecution') {
     sessionDateTime = message.sessionDateTime;
     uploadedCount = 0;
-    runScraper(message.contact_list).catch((error) => {
-      console.error('Failed to execute scraper:', error);
-      chrome.runtime.sendMessage({ action: 'scrapingFailed', error: error.message });
-      hideOverlay();
-    });
+
+    // Run scraper and send response based on result
+    runScraper(message.assignedPhone)
+      .then(() => {
+        sendResponse({ ok: true });
+      })
+      .catch((error) => {
+        console.error('Failed to execute scraper:', error);
+        sendResponse({ ok: false, error: error.message });
+        chrome.runtime.sendMessage({ action: 'scrapingFailed', error: error.message });
+        hideOverlay();
+      });
+
+    return true; // Keep the message channel open for async operations
   }
 });
 
-async function runScraper(contactList) {
-  if (!Array.isArray(contactList) || contactList.length === 0) {
-    throw new Error('Contact list is empty.');
+async function runScraper(assignedPhone) {
+  if (!assignedPhone) {
+    throw new Error('Contact is empty.');
   }
 
   ensureOverlay();
-  showOverlayStatus('Starting scrape...');
+  showOverlayStatus('Starting scraping...');
 
   const aggregatedContacts = [];
 
-  for (const contactName of contactList) {
-    showOverlayStatus(`Scraping ${contactName}`);
-    const items = await scrapeContactCatalog(contactName);
-    aggregatedContacts.push({ contact: contactName, items });
-  }
+  showOverlayStatus(`Scraping ${assignedPhone}`);
+  const items = await scrapeContactCatalog(assignedPhone);
+  aggregatedContacts.push({ contact: assignedPhone, items });
 
   chrome.runtime.sendMessage({
     action: 'scrapingCompleted',
@@ -76,24 +83,30 @@ async function scrapeContactCatalog(contactName) {
       return [];
     }
 
-    const resultItems = searchResults.querySelectorAll('div[role="listitem"]');
+    let resultItems = searchResults.querySelectorAll('div[role="listitem"]');
+    if (!resultItems || resultItems.length === 0) {
+      resultItems = searchResults.querySelectorAll('div[role="gridcell"]');
+    }
     const targetContact = resultItems.length > 1 ? resultItems[1] : null;
     if (!targetContact) {
-      console.warn('Contact not found in search results:', contactName);
+      console.warn('Contact not found in search results:', resultItems);
       return [];
     }
 
     clickElement(targetContact);
     await wait(900);
 
-    const catalogButton = document.querySelector('button[title="Catalog"]');
+    let catalogButton = document.querySelector('button[title="Catalog"]');
+    if (!catalogButton) {
+      catalogButton = document.querySelector('div[aria-label="Catalog"]');
+    }
     if (!catalogButton) {
       console.warn('Catalog button missing for contact:', contactName);
       return [];
     }
 
     catalogButton.click();
-    await wait(1500);
+    await wait(3500);
 
     const items = [];
     await collectCatalogItems(contactName, items);
@@ -118,6 +131,7 @@ async function collectCatalogItems(contactName, accumulator) {
     return;
   }
 
+  // Process each card sequentially
   for (let index = 0; index < catalogCards.length - 1; index++) {
     const card = catalogCards[index];
     const spans = card.querySelectorAll('span[dir="auto"]');
@@ -138,27 +152,24 @@ async function collectCatalogItems(contactName, accumulator) {
 
     const details = await scrapeCatalogDetails();
     const catalogItem = { name, desc, price, ...details };
-    accumulator.push(catalogItem);
+    console.log('Scraped catalog item:', catalogItem);
 
+    accumulator.push(catalogItem);
     uploadedCount += 1;
     updateOverlayProgress(uploadedCount);
 
-    chrome.runtime.sendMessage({
-      action: 'catalogItemScraped',
-      contact: contactName,
-      item: catalogItem,
-      totalItems: Math.max(accumulator.length, catalogCards.length - 1)
-    });
-
+    // Refresh the cards list after processing each item
     catalogCards = Array.from(document.querySelectorAll('div[role="listitem"]'));
   }
 
+  // Check if there are more items to load
   const loader = catalogCards[catalogCards.length - 1];
   if (loader) {
     loader.scrollIntoView();
     await wait(800);
     const refreshed = Array.from(document.querySelectorAll('div[role="listitem"]'));
     if (refreshed.length > catalogCards.length) {
+      // Recursively collect more items
       await collectCatalogItems(contactName, accumulator);
     }
   }
@@ -190,15 +201,19 @@ async function scrapeCatalogDetails() {
       const back = document.querySelector('div[aria-label="Back"]');
       if (back) {
         back.click();
-        await wait(350);
+        await wait(2000);
       }
     }
   }
 
-  const backButton = document.querySelector('div[aria-label="Back"]');
-  if (backButton) {
-    backButton.click();
-    await wait(350);
+  //Go back if in product link view (still on same page)
+  const productLinkButton = document.querySelector('div[aria-label="Product link"]');
+  if (productLinkButton) {
+    const backButton = document.querySelector('div[aria-label="Back"]');
+    if (backButton) {
+      backButton.click();
+      await wait(2000);
+    }
   }
 
   return {
