@@ -1,13 +1,17 @@
 # WhatsApp Catalog Scraper Extension
 
-Chrome extension that automates WhatsApp Web catalog collection and uploads finished results to Firebase in a single batch.
+Chrome extension that automates WhatsApp Web catalog collection and streams each product directly into Firebase with a final completion summary.
 
 ## Key Features
 
-- **Single-contact scraping** driven by the phone number assigned to the signed-in operator.
-- **Automated WhatsApp navigation** with an in-page overlay that shows progress while products are captured.
-- **Single-shot upload**: product data is sent to Firestore only after scraping completes, avoiding partially synced sessions.
-- **Firebase-integrated dashboard**: operators authenticate with Firebase Auth and see completion status in the popup once the batch upload is done.
+- **Single-contact scraping** based on the phone number assigned to the authenticated operator.
+- **Automated WhatsApp navigation** with a live overlay to show scrape progress.
+- **Incremental uploads with summary**: each product (and its images) is written to Firestore/Storage as soon as it is scraped, and the session finishes with a clear success/failure breakdown.
+- **Optional item cap**: operators can enable a limit in the popup to scrape only the first _N_ catalog entries (unchecked defaults to scraping everything).
+- **Firebase-integrated popup** that shows session progress once the background worker finishes uploading.
+- **Admin console** (`admin.html`) with two tabs:
+  - **Operator Management** to create users, assign catalog numbers, and inspect latest sessions.
+  - **Item Management** to review catalog entries, preview all uploaded images in a carousel, delete individual items (auto-cleaning storage), or wipe entire sessions.
 
 ## Usage
 
@@ -24,20 +28,26 @@ Chrome extension that automates WhatsApp Web catalog collection and uploads fini
 3. **Start scraping**  
    - Make sure you are logged in to [web.whatsapp.com](https://web.whatsapp.com) in a browser tab.  
    - Click **Start scraping** in the popup. The popup closes automatically.  
-   - The content script opens the assigned contact’s catalog and scrapes every product.
+   - (Optional) Check **Limit catalog items** to scrape only the first _N_ products.  
+   - The content script opens the assigned contact’s catalog and scrapes every product, capturing descriptions and product images (skipping the first two thumbnails).
 
 4. **Wait for completion**  
-   - Watch the overlay inside WhatsApp Web for progress.  
-   - When the process finishes, the extension uploads items to `users/{uid}/sessions/{sessionId}` and then notifies the background script.  
-   - Reopen the popup to view updated totals and the list of scraped items.
+   - Watch the overlay inside WhatsApp Web for progress (success counter increases as uploads succeed).  
+   - When the process finishes, the background worker patches the session summary and broadcasts the final success/failure counts.  
+   - Reopen the popup to view updated totals, failure counts (if any), and the item list.
+
+5. **Optional Admin tasks**  
+   - Open `admin.html` directly in the extension directory.  
+   - Use the **Operator Management** tab to onboard operators or reassign catalog numbers.  
+   - Use the **Item Management** tab to preview uploaded items, remove individual entries, or delete entire sessions (images are cleaned up automatically).
 
 ## Data Flow
 
 ```
-popup.js        -> creates session document, triggers scraping
-background.js   -> tracks active session and uploads data after completion
-content.js      -> scrapes WhatsApp catalog, returns aggregated results once, no streaming updates
-Firestore       -> stores session metadata and scraped items
+popup.js        -> creates the session document and triggers scraping
+content.js      -> scrapes WhatsApp catalog items and streams each upload request to the background worker
+background.js   -> authenticates against Firebase, stores each item immediately, tracks progress, and finalizes the session summary
+Firestore/Storage -> persist session metadata, catalog documents, and uploaded images
 ```
 
 ## Requirements
@@ -51,13 +61,14 @@ Firestore       -> stores session metadata and scraped items
 ```
 whatsapp-catalog-extension/
 ├── src/
-│   ├── background.js     # background worker handling Firebase writes
-│   ├── content.js        # WhatsApp Web scraper and overlay
-│   ├── popup.js          # popup UI and Firebase Auth integration
-│   └── firebase-init.js  # Firebase configuration (not checked in)
-├── lib/                  # Firebase compat SDK bundles
-├── manifest.json         # extension manifest
-├── admin.html            # optional admin UI
+│   ├── background.js             # Background worker handling Firebase writes & storage uploads
+│   ├── content.js                # WhatsApp Web scraper and overlay
+│   ├── popup.js                  # Popup UI and Firebase Auth integration
+│   ├── firebase-init.example.js  # Template for project-specific Firebase config
+│   └── firebase-init.js          # Local Firebase config (git-ignored)
+├── lib/                          # Firebase compat SDK bundles
+├── manifest.json                 # Extension manifest
+├── admin.html                    # Admin console (operators + item management)
 └── README.md
 ```
 

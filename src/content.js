@@ -4,11 +4,22 @@ let sessionDateTime = null;
 let overlayElement = null;
 let overlayTimer = null;
 let uploadedCount = 0;
+let uploadSummary = { success: 0, failure: 0 };
+let itemScrapeLimit = null;
+let overlayItemTotal = null;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'startExecution') {
     sessionDateTime = message.sessionDateTime;
     uploadedCount = 0;
+    uploadSummary = { success: 0, failure: 0 };
+    const parsedLimit = Number(message.itemLimit);
+    if (Number.isFinite(parsedLimit) && parsedLimit > 0) {
+      itemScrapeLimit = Math.floor(parsedLimit);
+    } else {
+      itemScrapeLimit = null;
+    }
+    overlayItemTotal = itemScrapeLimit;
 
     // Run scraper and send response based on result
     runScraper(message.assignedPhone)
@@ -19,6 +30,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.log('Failed to execute scraper:', error);
         sendResponse({ ok: false, error: error.message });
         chrome.runtime.sendMessage({ action: 'scrapingFailed', error: error.message });
+        overlayItemTotal = null;
+        itemScrapeLimit = null;
         hideOverlay();
       });
 
@@ -33,24 +46,47 @@ async function runScraper(assignedPhone) {
 
   ensureOverlay();
   showOverlayStatus('Starting scraping...');
-
-  const aggregatedContacts = [];
+  uploadedCount = 0;
+  uploadSummary = { success: 0, failure: 0 };
+  overlayItemTotal = itemScrapeLimit;
+  updateOverlayProgress(0);
 
   showOverlayStatus(`Scraping ${assignedPhone}`);
   const items = await scrapeContactCatalog(assignedPhone);
-  aggregatedContacts.push({ contact: assignedPhone, items });
 
-  chrome.runtime.sendMessage({
-    action: 'scrapingCompleted',
-    results: aggregatedContacts,
-    summary: {
-      totalContacts: aggregatedContacts.length,
-      totalItems: aggregatedContacts.reduce((acc, entry) => acc + (entry.items?.length || 0), 0)
-    }
+  const processedCount = uploadSummary.success + uploadSummary.failure;
+  const finalSummary = {
+    contact: assignedPhone,
+    totalContacts: processedCount > 0 ? 1 : 0,
+    totalItems: processedCount,
+    success: uploadSummary.success,
+    failure: uploadSummary.failure
+  };
+
+  await new Promise((resolve) => {
+    chrome.runtime.sendMessage({
+      action: 'scrapingCompleted',
+      summary: finalSummary
+    }, (response) => {
+      const lastError = chrome.runtime.lastError;
+      if (!lastError && response?.summary) {
+        finalSummary.success = response.summary.success ?? finalSummary.success;
+        finalSummary.failure = response.summary.failure ?? finalSummary.failure;
+      }
+
+      const successText = `${finalSummary.success} item${finalSummary.success === 1 ? '' : 's'} uploaded`;
+      const failureText = finalSummary.failure > 0
+        ? ` · ${finalSummary.failure} failure${finalSummary.failure === 1 ? '' : 's'}`
+        : '';
+      showOverlayStatus(`Scraping finished · ${successText}${failureText}`);
+      resolve();
+    });
   });
 
-  showOverlayStatus('Scraping finished');
+  updateOverlayProgress(uploadSummary.success);
   setTimeout(hideOverlay, 2500);
+  overlayItemTotal = null;
+  itemScrapeLimit = null;
 }
 
 async function scrapeContactCatalog(contactName) {
@@ -152,14 +188,29 @@ async function collectCatalogItems(contactName, accumulator) {
 
     const details = await scrapeCatalogDetails();
     const catalogItem = { name, desc, price, ...details };
-    //console.log('Scraped catalog item:', catalogItem);
-
     accumulator.push(catalogItem);
-    uploadedCount += 1;
-    updateOverlayProgress(uploadedCount);
+
+    const estimatedTotal = itemScrapeLimit || Math.max(accumulator.length, catalogCards.length - 1);
+    const uploadSucceeded = await uploadCatalogItem(contactName, catalogItem, estimatedTotal);
+    catalogItem.images = Array.isArray(catalogItem.images) ? [] : catalogItem.images; // release image data
+
+    if (!uploadSucceeded) {
+      console.warn('Catalog item upload failed for', contactName, catalogItem.name);
+    }
+
+    uploadedCount = uploadSummary.success;
+ 
+    const processedItems = uploadSummary.success + uploadSummary.failure;
+    if (itemScrapeLimit && processedItems >= itemScrapeLimit) {
+      break;
+    }
 
     // Refresh the cards list after processing each item
     catalogCards = Array.from(document.querySelectorAll('div[role="listitem"]'));
+  }
+
+  if (itemScrapeLimit && (uploadSummary.success + uploadSummary.failure) >= itemScrapeLimit) {
+    return;
   }
 
   // Check if there are more items to load
@@ -275,35 +326,96 @@ async function extractProductDescription() {
         description = refreshedPrev.textContent || description;
       }
     }
-    const back = document.querySelector('div[aria-label="Back"]');
-    if (back) {
-      back.click();
-      await wait(500);
-    }
   }
 
   return description;
 }
 
 async function navigateBackToCatalog() {
+  //from the details page
+  const back = document.querySelector('div[aria-label="Back"]');
+  if (back) {
+    back.click();
+    await wait(1200);
+  }
+
+  //if details page still shows after clicking back, click the back button again
   const productMenuButton = document.querySelector('button[aria-label="Menu"]');
   if (productMenuButton) {
     const backButton = document.querySelector('div[aria-label="Back"]');
     if (backButton) {
       backButton.click();
-      await wait(1200);
+      await wait(500);
     }
-  }
-
-  const backButton = document.querySelector('div[aria-label="Back"]');
-  if (backButton) {
-    backButton.click();
-    await wait(500);
   }
 }
 
 async function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function recordUploadResult(success) {
+  if (success) {
+    uploadSummary.success += 1;
+  } else {
+    uploadSummary.failure += 1;
+  }
+}
+
+function uploadCatalogItem(contactName, catalogItem, totalItems) {
+  const rawImages = Array.isArray(catalogItem.images) ? catalogItem.images : [];
+  const uploadableImagesCount = Math.max(Math.min(Math.max(rawImages.length - 2, 0), 5), 0);
+
+  return new Promise((resolve) => {
+    const currentIndex = uploadSummary.success + uploadSummary.failure + 1;
+    const itemLabel = catalogItem.name || 'item';
+    const totalAvailable = itemScrapeLimit || totalItems;
+    const totalLabel = totalAvailable && Number.isFinite(totalAvailable) ? totalAvailable : '?';
+    updateOverlayProgress(uploadSummary.success, 0, uploadableImagesCount);
+    showOverlayStatus(`Uploading ${itemLabel} (${currentIndex}/${totalLabel})...`);
+
+    chrome.runtime.sendMessage({
+      action: 'catalogItemScraped',
+      contact: contactName,
+      item: catalogItem,
+      totalItems
+    }, (response) => {
+      const lastError = chrome.runtime.lastError;
+      const success = !lastError && response?.ok;
+
+      recordUploadResult(success);
+
+      if (response?.summary) {
+        uploadSummary.success = response.summary.success ?? uploadSummary.success;
+        uploadSummary.failure = response.summary.failure ?? uploadSummary.failure;
+      }
+
+      const resolvedAttempted = typeof response?.imagesAttempted === 'number'
+        ? response.imagesAttempted
+        : uploadableImagesCount;
+      const resolvedUploaded = typeof response?.imagesUploaded === 'number'
+        ? response.imagesUploaded
+        : (success ? uploadableImagesCount : 0);
+
+      if (lastError) {
+        console.log('Catalog item upload error:', lastError.message);
+        updateOverlayProgress(uploadSummary.success, resolvedUploaded, resolvedAttempted);
+        showOverlayStatus(`Upload failed for ${itemLabel}. Retrying remaining items...`);
+      } else if (!success && response?.error) {
+        console.log('Catalog item upload error:', response.error);
+        updateOverlayProgress(uploadSummary.success, resolvedUploaded, resolvedAttempted);
+        showOverlayStatus(`Upload failed for ${itemLabel}: ${response.error}`);
+      } else if (success) {
+        const uploaded = uploadSummary.success;
+        const totalAvailableSuccess = itemScrapeLimit || totalItems;
+        const total = totalAvailableSuccess && Number.isFinite(totalAvailableSuccess) ? totalAvailableSuccess : '?';
+        updateOverlayProgress(uploaded, resolvedUploaded, resolvedAttempted);
+        showOverlayStatus(`Uploaded ${itemLabel} (${uploaded}/${total}).`);
+      }
+
+      resolve(success);
+    });
+  });
 }
 
 function clickElement(element) {
@@ -393,11 +505,32 @@ function showOverlayStatus(text) {
   }
 }
 
-function updateOverlayProgress(count) {
+function updateOverlayProgress(itemCount, imagesUploaded = null, imagesAttempted = null) {
   const countEl = document.getElementById('overlayCount');
-  if (countEl) {
-    countEl.textContent = `${count} item${count === 1 ? '' : 's'} uploaded`;
+  if (!countEl) {
+    return;
   }
+
+  let itemsText;
+  if (overlayItemTotal && overlayItemTotal > 0) {
+    const cappedTotal = overlayItemTotal;
+    const displayCount = Math.min(itemCount, cappedTotal);
+    itemsText = `${displayCount}/${cappedTotal} item${cappedTotal === 1 ? '' : 's'} uploaded`;
+  } else {
+    itemsText = `${itemCount} item${itemCount === 1 ? '' : 's'} uploaded`;
+  }
+  let imagesText = '';
+
+  if (imagesAttempted !== null && imagesAttempted !== undefined && imagesAttempted > 0) {
+    const uploaded = imagesUploaded !== null && imagesUploaded !== undefined ? imagesUploaded : 0;
+    if (uploaded <= 0) {
+      imagesText = ` · Uploading ${imagesAttempted} image${imagesAttempted === 1 ? '' : 's'}`;
+    } else {
+      imagesText = ` · ${uploaded}/${imagesAttempted} image${imagesAttempted === 1 ? '' : 's'} uploaded`;
+    }
+  }
+
+  countEl.textContent = `${itemsText}${imagesText}`;
 }
 
 function hideOverlay() {

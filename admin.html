@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <title>WhatsApp Catalog Admin</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/icon32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/icon16.png">
   <style>
     :root {
       color-scheme: dark;
@@ -1038,13 +1040,25 @@
     }
 
     function renderItemsTable(items, userId, sessionId, sessionData) {
+      itemsTableBody.innerHTML = '';
+
+      const sessionActionsRow = document.createElement('tr');
+      sessionActionsRow.innerHTML = `
+        <td colspan="6" style="text-align: right;">
+          <button class="btn-secondary" data-action="delete-session" data-user="${userId}" data-session="${sessionId}">
+            Delete entire session
+          </button>
+        </td>
+      `;
+      itemsTableBody.appendChild(sessionActionsRow);
+
       if (!items.length) {
-        itemsTableBody.innerHTML = '<tr><td colspan="6" class="muted">No catalog items uploaded for this session.</td></tr>';
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = '<td colspan="6" class="muted">No catalog items uploaded for this session.</td>';
+        itemsTableBody.appendChild(emptyRow);
         itemsSummary.textContent = `Session ${sessionId} · ${sessionData?.status || 'unknown'} · 0 items`;
-        return;
       }
 
-      itemsTableBody.innerHTML = '';
       items.forEach((item) => {
         const images = Array.isArray(item.images) ? item.images : [];
         const uploadedTime = formatUploadedTime(item.uploadedAt);
@@ -1115,6 +1129,12 @@
         }
         deleteCatalogItem(userId, sessionId, itemId, imagePaths);
       }
+
+      if (action === 'delete-session') {
+        const userId = event.currentTarget.dataset.user;
+        const sessionId = event.currentTarget.dataset.session;
+        deleteEntireSession(userId, sessionId);
+      }
     }
 
     async function deleteCatalogItem(userId, sessionId, itemId, imagePaths = []) {
@@ -1129,20 +1149,80 @@
       }
 
       try {
-        await firebaseFirestore.collection('users')
+        const sessionRef = firebaseFirestore.collection('users')
           .doc(userId)
           .collection('sessions')
-          .doc(sessionId)
+          .doc(sessionId);
+
+        await sessionRef
           .collection('items')
           .doc(itemId)
           .delete();
 
         await deleteStoragePaths(imagePaths);
 
+        const remainingItems = await sessionRef
+          .collection('items')
+          .limit(1)
+          .get();
+
+        if (remainingItems.empty) {
+          await sessionRef.delete();
+          showBanner('Catalog item deleted and empty session removed.', 'success');
+          clearItemsTable('Select a session to view items.');
+          itemsSummary.textContent = 'Session deleted because it no longer had any catalog items.';
+          await loadSessionsForItems(userId);
+          return;
+        }
+
         showBanner('Catalog item deleted successfully.', 'success');
         await loadItemsForSession(userId, sessionId);
       } catch (error) {
         console.log('Failed to delete catalog item:', error);
+        showBanner(parseFirebaseError(error), 'error');
+      }
+    }
+
+    async function deleteEntireSession(userId, sessionId) {
+      if (!userId || !sessionId) {
+        showBanner('Missing identifiers for session deletion.', 'error');
+        return;
+      }
+
+      const confirmDelete = window.confirm('Delete this entire session and all associated items? This cannot be undone.');
+      if (!confirmDelete) {
+        return;
+      }
+
+      try {
+        const sessionRef = firebaseFirestore.collection('users')
+          .doc(userId)
+          .collection('sessions')
+          .doc(sessionId);
+
+        const itemsSnapshot = await sessionRef.collection('items').get();
+        const imagePaths = [];
+        const deletions = [];
+
+        itemsSnapshot.forEach((doc) => {
+          const data = doc.data();
+          const paths = Array.isArray(data.images)
+            ? data.images.map((img) => img.path).filter(Boolean)
+            : [];
+          imagePaths.push(...paths);
+          deletions.push(sessionRef.collection('items').doc(doc.id).delete());
+        });
+
+        await Promise.all(deletions);
+        await deleteStoragePaths(imagePaths);
+        await sessionRef.delete();
+
+        showBanner('Session and all catalog items deleted successfully.', 'success');
+        clearItemsTable('Select a session to view items.');
+        itemsSummary.textContent = 'Session deleted.';
+        await loadSessionsForItems(userId);
+      } catch (error) {
+        console.log('Failed to delete session:', error);
         showBanner(parseFirebaseError(error), 'error');
       }
     }
@@ -1250,15 +1330,21 @@
         const controls = document.createElement('div');
         controls.className = 'carousel-controls';
         controls.innerHTML = `
-          <button class="carousel-button" id="carouselPrev">Prev</button>
-          <div class="carousel-indicator" id="carouselIndicator">1 / ${images.length}</div>
-          <button class="carousel-button" id="carouselNext">Next</button>
+          <button class="carousel-button" data-carousel="prev">Prev</button>
+          <div class="carousel-indicator" data-carousel="indicator">1 / ${images.length}</div>
+          <button class="carousel-button" data-carousel="next">Next</button>
         `;
 
         body.appendChild(carousel);
         body.appendChild(controls);
 
-        initializeCarousel(track, images.length);
+        initializeCarousel({
+          track,
+          totalSlides: images.length,
+          prevButton: controls.querySelector('[data-carousel="prev"]'),
+          nextButton: controls.querySelector('[data-carousel="next"]'),
+          indicator: controls.querySelector('[data-carousel="indicator"]')
+        });
       }
 
       if (!carousel.hasChildNodes()) {
@@ -1278,11 +1364,13 @@
       });
     }
 
-    function initializeCarousel(track, totalSlides) {
+    function initializeCarousel({ track, totalSlides, prevButton, nextButton, indicator }) {
       let currentIndex = 0;
-      const prevButton = document.getElementById('carouselPrev');
-      const nextButton = document.getElementById('carouselNext');
-      const indicator = document.getElementById('carouselIndicator');
+
+      if (!track || !prevButton || !nextButton || !indicator) {
+        console.log('Missing carousel elements.');
+        return;
+      }
 
       function updateCarousel() {
         track.style.transform = `translateX(-${currentIndex * 100}%)`;

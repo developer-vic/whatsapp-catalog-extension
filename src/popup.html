@@ -219,6 +219,24 @@
       border: 1px solid rgba(51, 65, 85, 0.4);
     }
 
+    .limit-control {
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+      color: rgba(226, 232, 240, 0.75);
+    }
+
+    .limit-control input[type="number"] {
+      width: 80px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(15, 23, 42, 0.8);
+      color: #f8fafc;
+    }
+
     .item-title {
       font-weight: 600;
       font-size: 14px;
@@ -264,7 +282,7 @@
     <div class="header">
       <div class="logo">WS</div>
       <h1>WhatsApp Catalog Scraper</h1>
-      <p class="subtitle">v2.0 · Firebase connected</p>
+      <p class="subtitle">v3.0</p>
     </div>
 
     <div id="statusBanner" class="status-banner"></div>
@@ -298,12 +316,19 @@
           <span class="info-label">Assigned Number</span>
           <span class="info-value" id="assignedPhone">-</span>
         </div>
+        <div class="limit-control">
+          <label for="limitItemsToggle" style="display: flex; align-items: center; gap: 6px;">
+            <input type="checkbox" id="limitItemsToggle">
+            Limit catalog items
+          </label>
+          <input type="number" id="limitItemsInput" min="1" value="" disabled>
+        </div>
         <button type="button" id="startScrapeButton" class="btn-primary" style="width: 100%; margin-top: 12px;">Start scraping</button>
       </div>
 
       <div class="card">
         <div class="info-row" style="margin-bottom: 16px; display: flex;">
-          <span class="info-label">Active session</span>
+          <span class="info-label">Last session</span>
           <span class="info-value" id="sessionLabel">No session</span>
         </div>
         <div class="progress-wrapper">

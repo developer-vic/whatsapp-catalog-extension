@@ -2,6 +2,8 @@ let currentUser = null;
 let assignedPhoneNumber = null;
 let activeSessionId = null;
 let isStartingSession = false;
+let limitItemsToggle = null;
+let limitItemsInput = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   bindEventListeners();
@@ -27,6 +29,13 @@ function bindEventListeners() {
   document.getElementById('resetPasswordButton').addEventListener('click', handlePasswordReset);
   document.getElementById('logoutButton').addEventListener('click', handleLogout);
   document.getElementById('startScrapeButton').addEventListener('click', handleStartScrape);
+
+  limitItemsToggle = document.getElementById('limitItemsToggle');
+  limitItemsInput = document.getElementById('limitItemsInput');
+  if (limitItemsToggle && limitItemsInput) {
+    limitItemsToggle.addEventListener('change', handleLimitToggle);
+    limitItemsInput.disabled = !limitItemsToggle.checked;
+  }
 }
 
 function handleLoginSubmit(event) {
@@ -90,6 +99,21 @@ function handleLogout() {
     });
 }
 
+function handleLimitToggle() {
+  if (!limitItemsToggle || !limitItemsInput) {
+    return;
+  }
+
+  const checked = limitItemsToggle.checked;
+  limitItemsInput.disabled = !checked;
+  if (checked) {
+    const parsed = parseInt(limitItemsInput.value, 10);
+    if (Number.isNaN(parsed) || parsed <= 0) {
+      limitItemsInput.value = '2';
+    }
+  }
+}
+
 async function handleStartScrape() {
   if (!currentUser || !assignedPhoneNumber) {
     showBanner('Missing user or assigned phone number.', 'error');
@@ -105,12 +129,25 @@ async function handleStartScrape() {
   startButton.disabled = true;
   startButton.textContent = 'Preparing session...';
 
+  let itemLimit = null;
+  if (limitItemsToggle && limitItemsToggle.checked) {
+    const parsedLimit = parseInt(limitItemsInput.value, 10);
+    if (Number.isNaN(parsedLimit) || parsedLimit <= 0) {
+      showBanner('Enter a positive number for the item limit.', 'error');
+      isStartingSession = false;
+      startButton.disabled = false;
+      startButton.textContent = 'Start scraping';
+      return;
+    }
+    itemLimit = parsedLimit;
+  }
+
   try {
     const sessionId = generateSessionId();
     const userId = currentUser.uid;
     const idToken = await currentUser.getIdToken(true);
 
-    await createSessionDocument(userId, sessionId);
+    await createSessionDocument(userId, sessionId, itemLimit);
 
     chrome.runtime.sendMessage({
       action: 'executeScript',
@@ -118,7 +155,8 @@ async function handleStartScrape() {
       userEmail: currentUser.email || '',
       sessionId,
       assignedPhone: assignedPhoneNumber,
-      idToken
+      idToken,
+      itemLimit
     }, () => {
       const error = chrome.runtime.lastError;
       if (error) {
@@ -131,7 +169,7 @@ async function handleStartScrape() {
 
     activeSessionId = sessionId;
     updateSessionLabel(sessionId);
-    updateProgressUI({ uploadedItems: 0, totalItems: 0 });
+    updateProgressUI({ uploadedItems: 0, totalItems: 0, failedItems: 0, status: 'running' });
     window.close();
 
   } catch (error) {
@@ -149,7 +187,7 @@ async function handleSessionCompleted(message) {
     return;
   }
 
-  const { sessionId } = message;
+  const { sessionId, summary } = message;
   if (!sessionId) {
     return;
   }
@@ -157,6 +195,16 @@ async function handleSessionCompleted(message) {
   activeSessionId = sessionId;
   updateSessionLabel(sessionId);
   await updateSessionData(sessionId);
+
+  if (summary) {
+    const success = summary.success ?? 0;
+    const failure = summary.failure ?? 0;
+    const type = failure > 0 ? 'error' : 'success';
+    const messageText = failure > 0
+      ? `Completed with ${failure} failure${failure === 1 ? '' : 's'} · ${success} uploaded`
+      : `Scraping completed successfully · ${success} item${success === 1 ? '' : 's'} uploaded`;
+    showBanner(messageText, type);
+  }
 }
 
 async function handleSessionEmpty(message) {
@@ -173,6 +221,9 @@ function handleAuthStateChanged(user) {
   if (user) {
     showDashboardView();
     document.getElementById('userEmail').textContent = user.email || user.uid;
+    if (limitItemsToggle) {
+      handleLimitToggle();
+    }
     fetchAssignedPhone(user.uid)
       .then(() => {
         refreshLatestSession();
@@ -223,7 +274,7 @@ async function fetchAssignedPhone(userId) {
   document.getElementById('startScrapeButton').disabled = false;
 }
 
-async function createSessionDocument(userId, sessionId) {
+async function createSessionDocument(userId, sessionId, itemLimit) {
   const sessionRef = firebaseFirestore
     .collection('users')
     .doc(userId)
@@ -235,13 +286,15 @@ async function createSessionDocument(userId, sessionId) {
     status: 'running',
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     uploadedItems: 0,
-    totalItems: 0
+    totalItems: 0,
+    failedItems: 0,
+    itemLimit: itemLimit || null
   });
 }
 
 function refreshLatestSession() {
   updateSessionLabel('No session');
-  updateProgressUI({ uploadedItems: 0, totalItems: 0, status: 'idle' });
+  updateProgressUI({ uploadedItems: 0, totalItems: 0, failedItems: 0, status: 'idle' });
   clearItemsList();
 
   firebaseFirestore
@@ -284,13 +337,11 @@ async function updateSessionData(sessionId, initialData) {
   updateProgressUI({
     uploadedItems: data.uploadedItems || 0,
     totalItems: data.totalItems || 0,
+    failedItems: data.failedItems || 0,
     status: data.status || 'running'
   });
 
   if (data.status === 'completed') {
-    if (previousStatus !== 'completed') {
-      showBanner('Scraping completed successfully.', 'success');
-    }
     await loadSessionItems(sessionId);
   } else if (data.status === 'failed') {
     showBanner(data.errorMessage || 'Scraping failed.', 'error');
@@ -362,11 +413,12 @@ function clearItemsList() {
   }
 }
 
-function updateProgressUI({ uploadedItems, totalItems, status }) {
+function updateProgressUI({ uploadedItems, totalItems, status, failedItems = 0 }) {
   const progressFill = document.getElementById('progressFill');
   const progressLabel = document.getElementById('progressLabel');
   const total = totalItems || 0;
   const uploaded = uploadedItems || 0;
+  const failures = failedItems || 0;
   const percentage = total > 0 ? Math.min(100, Math.round((uploaded / total) * 100)) : 0;
 
   progressFill.style.width = `${percentage}%`;
@@ -377,7 +429,11 @@ function updateProgressUI({ uploadedItems, totalItems, status }) {
   }
 
   if (status === 'completed') {
-    labelText = `Completed · ${uploaded} item${uploaded === 1 ? '' : 's'} uploaded.`;
+    if (failures > 0) {
+      labelText = `Completed with ${failures} failure${failures === 1 ? '' : 's'} · ${uploaded} uploaded.`;
+    } else {
+      labelText = `Completed · ${uploaded} item${uploaded === 1 ? '' : 's'} uploaded.`;
+    }
   }
 
   if (status === 'failed') {
@@ -394,10 +450,17 @@ function updateSessionLabel(value) {
 function resetDashboardState() {
   activeSessionId = null;
   updateSessionLabel('No session');
-  updateProgressUI({ uploadedItems: 0, totalItems: 0, status: 'idle' });
+  updateProgressUI({ uploadedItems: 0, totalItems: 0, failedItems: 0, status: 'idle' });
   document.getElementById('assignedPhone').textContent = assignedPhoneNumber || '-';
   clearItemsList();
   document.getElementById('startScrapeButton').disabled = !assignedPhoneNumber;
+  if (limitItemsToggle) {
+    limitItemsToggle.checked = false;
+    handleLimitToggle();
+    if (limitItemsInput) {
+      limitItemsInput.value = '2';
+    }
+  }
 }
 
 function showBanner(message, type = 'info') {

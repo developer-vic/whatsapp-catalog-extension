@@ -30,25 +30,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'executeScript':
       handleStartScraping(message, sender, sendResponse);
       return true;
+    case 'catalogItemScraped':
+      handleCatalogItemUpload(message, sendResponse);
+      return true;
     case 'scrapingCompleted':
-      handleScrapingCompleted(message);
-      break;
+      handleScrapingCompleted(message, sendResponse);
+      return true;
     case 'scrapingFailed':
-      updateSessionStatus('failed', { errorMessage: message.error || 'Unknown scraping error.' });
-      break;
+      updateSessionStatus('failed', { errorMessage: message.error || 'Unknown scraping error.' })
+        .catch((error) => {
+          console.log('Failed to update session status after scraping failure:', error);
+        })
+        .finally(() => {
+          activeSessionContext = null;
+        });
+      if (typeof sendResponse === 'function') {
+        sendResponse({ ok: true });
+      }
+      return false;
     default:
       break;
   }
 });
 
 function handleStartScraping(payload, sender, sendResponse) {
+  const limitValue = payload.itemLimit && Number.isFinite(payload.itemLimit) && payload.itemLimit > 0
+    ? Math.floor(payload.itemLimit)
+    : null;
+
   activeSessionContext = {
     userId: payload.userId,
     sessionId: payload.sessionId,
     assignedPhone: payload.assignedPhone,
     idToken: payload.idToken,
     uploaded: 0,
-    total: 0
+    total: limitValue || 0,
+    success: 0,
+    failure: 0,
+    itemLimit: limitValue
   };
 
   chrome.tabs.query({ url: '*://web.whatsapp.com/*' }, (tabs) => {
@@ -76,7 +95,8 @@ function dispatchStartExecution(tabId, payload, sendResponse) {
   chrome.tabs.sendMessage(tabId, {
     action: 'startExecution',
     assignedPhone: payload.assignedPhone,
-    sessionDateTime: payload.sessionId
+    sessionDateTime: payload.sessionId,
+    itemLimit: activeSessionContext?.itemLimit || null
   }, () => {
     if (chrome.runtime.lastError) {
       console.log('Failed to start execution:', chrome.runtime.lastError);
@@ -87,102 +107,187 @@ function dispatchStartExecution(tabId, payload, sendResponse) {
   });
 }
 
-async function handleScrapingCompleted(message) {
+async function handleCatalogItemUpload(message, sendResponse) {
   if (!activeSessionContext) {
-    console.warn('Scraping completed without active session context.');
+    sendResponse({ ok: false, error: 'No active session context.' });
     return;
   }
 
   const { userId, sessionId } = activeSessionContext;
-  const results = Array.isArray(message?.results) ? message.results : [];
-  const summary = message?.summary || {};
-
-  const flattenedItems = [];
-  results.forEach((entry) => {
-    const contact = entry?.contact;
-    const items = Array.isArray(entry?.items) ? entry.items : [];
-    items.forEach((item) => {
-      flattenedItems.push({
-        contact: contact || '',
-        name: item?.name || '',
-        desc: item?.desc || '',
-        price: item?.price || '',
-        description: item?.description || '',
-        images: Array.isArray(item?.images) ? item.images : []
-      });
-    });
-  });
-
-  const totalItems = typeof summary.totalItems === 'number' ? summary.totalItems : flattenedItems.length;
-  const totalContacts = typeof summary.totalContacts === 'number' ? summary.totalContacts : results.length;
+  const contact = message?.contact || activeSessionContext.assignedPhone || '';
+  const item = message?.item || {};
+  const totalItemsHint = typeof message?.totalItems === 'number'
+    ? message.totalItems
+    : (activeSessionContext.itemLimit || null);
+  const itemIndex = activeSessionContext.success + activeSessionContext.failure;
   const timestamp = new Date().toISOString();
 
-  if (totalItems === 0) {
-    console.warn('Scraping completed with no catalog items. Skipping upload.');
+  const preparedItem = {
+    contact,
+    name: item?.name || '',
+    desc: item?.desc || '',
+    price: item?.price || '',
+    description: item?.description || '',
+    images: Array.isArray(item?.images) ? item.images : []
+  };
 
+  const attemptedImages = Math.min(Math.max(preparedItem.images.length - 2, 0), 5);
+  let uploadedImages = [];
+
+  try {
+    uploadedImages = await uploadItemImages(userId, sessionId, preparedItem, itemIndex);
+
+    await firestoreAddDocument(
+      `users/${userId}/sessions/${sessionId}/items`,
+      {
+        contact: preparedItem.contact,
+        name: preparedItem.name,
+        desc: preparedItem.desc,
+        price: preparedItem.price,
+        description: preparedItem.description,
+        images: uploadedImages,
+        uploadedAt: timestamp
+      }
+    );
+
+    activeSessionContext.uploaded += 1;
+    activeSessionContext.success += 1;
+    if (typeof totalItemsHint === 'number' && totalItemsHint >= 0) {
+      activeSessionContext.total = Math.max(activeSessionContext.total, totalItemsHint);
+    }
+
+    try {
+      await updateSessionProgress({ lastUploadedAt: timestamp });
+    } catch (progressError) {
+      console.log('Failed to update session progress:', progressError);
+    }
+
+    sendResponse({
+      ok: true,
+      summary: {
+        success: activeSessionContext.success,
+        failure: activeSessionContext.failure
+      },
+      imagesUploaded: uploadedImages.length,
+      imagesAttempted: attemptedImages
+    });
+  } catch (error) {
+    console.error('Failed to upload catalog item:', error);
+    activeSessionContext.failure += 1;
+    if (typeof totalItemsHint === 'number' && totalItemsHint >= 0) {
+      activeSessionContext.total = Math.max(activeSessionContext.total, totalItemsHint);
+    }
+
+    try {
+      await updateSessionProgress();
+    } catch (progressError) {
+      console.log('Failed to update session progress after error:', progressError);
+    }
+
+    sendResponse({
+      ok: false,
+      error: error.message,
+      summary: {
+        success: activeSessionContext.success,
+        failure: activeSessionContext.failure
+      },
+      imagesUploaded: uploadedImages.length,
+      imagesAttempted: attemptedImages
+    });
+  }
+}
+
+async function handleScrapingCompleted(message, sendResponse) {
+  if (!activeSessionContext) {
+    sendResponse({ ok: false, error: 'No active session context.' });
+    return;
+  }
+
+  const { userId, sessionId } = activeSessionContext;
+  const incomingSummary = message?.summary || {};
+  const success = activeSessionContext.success;
+  const failure = activeSessionContext.failure;
+  const timestamp = new Date().toISOString();
+
+  const processedTotal = Math.max(success + failure, incomingSummary.totalItems || 0);
+  const totalItems = processedTotal;
+  const totalContacts = Math.max(
+    incomingSummary.totalContacts || (processedTotal > 0 ? 1 : 0),
+    0
+  );
+
+  if (totalItems === 0 && failure === 0) {
     try {
       await firestoreDeleteDocument(`users/${userId}/sessions/${sessionId}`);
     } catch (error) {
       console.error('Failed to delete empty session document:', error);
     }
 
-    chrome.runtime.sendMessage({
-      action: 'sessionEmpty',
-      sessionId,
-      userId
+    notifyRuntime({ action: 'sessionEmpty', userId });
+    sendResponse({
+      ok: true,
+      summary: {
+        success: 0,
+        failure: 0,
+        totalItems: 0,
+        totalContacts
+      }
     });
 
     activeSessionContext = null;
     return;
   }
 
+  activeSessionContext.uploaded = success;
+  activeSessionContext.total = totalItems;
+
+  const finalSummary = {
+    success,
+    failure,
+    totalItems,
+    totalContacts
+  };
+
+  let finalizeError = null;
+
   try {
-    for (let index = 0; index < flattenedItems.length; index += 1) {
-      const item = flattenedItems[index];
-      const uploadedImages = await uploadItemImages(userId, sessionId, item, index);
-
-      await firestoreAddDocument(
-        `users/${userId}/sessions/${sessionId}/items`,
-        {
-          contact: item.contact,
-          name: item.name,
-          desc: item.desc,
-          price: item.price,
-          description: item.description,
-          images: uploadedImages,
-          uploadedAt: timestamp
-        }
-      );
-    }
-
-    activeSessionContext.uploaded = totalItems;
-    activeSessionContext.total = totalItems;
-
     await updateSessionStatus('completed', {
       completedAt: timestamp,
       lastUploadedAt: timestamp,
       totalItems,
-      uploadedItems: totalItems,
+      uploadedItems: success,
+      failedItems: failure,
       totalContacts
     });
 
-    chrome.runtime.sendMessage({
+    notifyRuntime({
       action: 'sessionCompleted',
       sessionId,
       userId,
-      totalItems
+      summary: finalSummary
     });
   } catch (error) {
     console.log('Failed to finalize scraping results:', error);
-    await updateSessionStatus('failed', { errorMessage: error.message });
+    finalizeError = error;
+    await updateSessionStatus('failed', {
+      errorMessage: error.message,
+      uploadedItems: success,
+      failedItems: failure,
+      totalItems
+    });
   } finally {
+    sendResponse({
+      ok: !finalizeError,
+      error: finalizeError?.message,
+      summary: finalSummary
+    });
     activeSessionContext = null;
   }
 }
 
 async function uploadItemImages(userId, sessionId, item, itemIndex) {
   const sourceImages = Array.isArray(item.images) ? item.images : [];
-  const images = sourceImages.slice(2); // Skip the first two images
+  const images = sourceImages.slice(2, 7); // Skip the first two images and keep up to five
 
   if (images.length === 0) {
     return [];
@@ -224,6 +329,76 @@ async function firestoreDeleteDocument(documentPath) {
   await authenticatedFetch(
     `${FIRESTORE_BASE_URL}/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${documentPath}`,
     'DELETE'
+  );
+}
+
+function notifyRuntime(payload) {
+  try {
+    const message = filterRuntimePayload(payload);
+
+    chrome.runtime.sendMessage(message, () => {
+      const error = chrome.runtime.lastError;
+      if (error && !error.message?.includes('Receiving end does not exist')) {
+        console.log('Runtime message error:', error);
+      }
+    });
+  } catch (error) {
+    console.log('Failed to send runtime message:', error);
+  }
+}
+
+function filterRuntimePayload(payload = {}) {
+  switch (payload.action) {
+    case 'sessionCompleted':
+      return {
+        action: 'sessionCompleted',
+        sessionId: payload.sessionId,
+        userId: payload.userId,
+        summary: {
+          success: payload.summary?.success || 0,
+          failure: payload.summary?.failure || 0,
+          totalItems: payload.summary?.totalItems || 0
+        }
+      };
+    case 'sessionEmpty':
+      return {
+        action: 'sessionEmpty',
+        userId: payload.userId
+      };
+    default:
+      return { action: payload.action };
+  }
+}
+
+async function updateSessionProgress(extraFields = {}) {
+  if (!activeSessionContext) {
+    return;
+  }
+
+  const { userId, sessionId } = activeSessionContext;
+  const total = Math.max(
+    activeSessionContext.total || 0,
+    activeSessionContext.success + activeSessionContext.failure
+  );
+
+  activeSessionContext.total = total;
+
+  const payload = {
+    uploadedItems: activeSessionContext.success,
+    failedItems: activeSessionContext.failure,
+    totalItems: total,
+    ...extraFields
+  };
+
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === undefined) {
+      delete payload[key];
+    }
+  });
+
+  await firestorePatchDocument(
+    `users/${userId}/sessions/${sessionId}`,
+    payload
   );
 }
 
