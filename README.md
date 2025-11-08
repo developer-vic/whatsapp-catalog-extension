@@ -14,6 +14,7 @@ Chrome extension that automates WhatsApp Web catalog collection and uploads fini
 1. **Install**  
    - Clone or download the repo.  
    - In Chrome, open `chrome://extensions`, enable *Developer mode*, choose **Load unpacked**, and select this project directory.
+   - Copy `src/firebase-init.example.js` to `src/firebase-init.js` and update it with your Firebase project credentials (the real file is ignored by git).
 
 2. **Sign in**  
    - Open the extension popup.  

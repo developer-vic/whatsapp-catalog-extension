@@ -152,7 +152,7 @@ async function collectCatalogItems(contactName, accumulator) {
 
     const details = await scrapeCatalogDetails();
     const catalogItem = { name, desc, price, ...details };
-    console.log('Scraped catalog item:', catalogItem);
+    //console.log('Scraped catalog item:', catalogItem);
 
     accumulator.push(catalogItem);
     uploadedCount += 1;
@@ -176,49 +176,130 @@ async function collectCatalogItems(contactName, accumulator) {
 }
 
 async function scrapeCatalogDetails() {
-  const messageBusiness = document.querySelector('div[title="Message business"]');
-  let description = '';
+  const images = await captureProductImages();
+  const description = await extractProductDescription();
+  await navigateBackToCatalog();
 
-  if (messageBusiness) {
-    messageBusiness.scrollIntoView();
-    await wait(200);
-    const prev = messageBusiness.previousElementSibling;
-    if (prev) {
-      description = prev.textContent || '';
+  return {
+    description: description.replace('https', ' https'),
+    images
+  };
+}
+
+async function captureProductImages() {
+  const imageElements = Array.from(document.querySelectorAll('img[draggable="false"]'));
+  if (imageElements.length === 0) {
+    return [];
+  }
+
+  const uniqueSources = new Set();
+  const imageData = [];
+
+  for (const img of imageElements) {
+    const src = img?.src || '';
+    if (!src || uniqueSources.has(src)) {
+      continue;
     }
 
-    const readMore = Array.from(document.querySelectorAll('span')).find((span) => span.textContent.trim() === 'Read more');
-    if (readMore) {
-      readMore.click();
-      await wait(400);
-      const refreshedMessage = document.querySelector('div[title="Message business"]');
-      if (refreshedMessage) {
-        const refreshedPrev = refreshedMessage.previousElementSibling;
-        if (refreshedPrev) {
-          description = refreshedPrev.textContent || description;
-        }
+    uniqueSources.add(src);
+
+    try {
+      const dataUrl = await convertImageToDataUrl(img);
+      if (dataUrl) {
+        imageData.push(dataUrl);
       }
-      const back = document.querySelector('div[aria-label="Back"]');
-      if (back) {
-        back.click();
-        await wait(2000);
-      }
+    } catch (error) {
+      console.warn('Failed to capture image data:', error);
     }
   }
 
-  //Go back if in product link view (still on same page)
-  const productLinkButton = document.querySelector('div[aria-label="Product link"]');
-  if (productLinkButton) {
+  return imageData;
+}
+
+async function convertImageToDataUrl(img) {
+  if (!img) {
+    return null;
+  }
+
+  const src = img.getAttribute('src') || '';
+  if (src.startsWith('data:')) {
+    return src;
+  }
+
+  try {
+    const response = await fetch(img.src, { mode: 'cors' });
+    if (!response.ok) {
+      throw new Error(`Fetch failed with status ${response.status}`);
+    }
+    const blob = await response.blob();
+    return await blobToDataUrl(blob);
+  } catch (fetchError) {
+    console.warn('Unable to fetch image for conversion:', fetchError);
+  }
+
+  return null;
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => reject(reader.error || new Error('Failed to convert blob to data URL'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function extractProductDescription() {
+  const messageBusiness = document.querySelector('div[title="Message business"]');
+  if (!messageBusiness) {
+    return '';
+  }
+
+  messageBusiness.scrollIntoView({ block: 'center' });
+  await wait(200);
+
+  let description = '';
+  const prev = messageBusiness.previousElementSibling;
+  if (prev) {
+    description = prev.textContent || '';
+  }
+
+  const readMore = Array.from(document.querySelectorAll('span')).find((span) => span.textContent.trim() === 'Read more');
+  if (readMore) {
+    readMore.click();
+    await wait(400);
+    const refreshedMessage = document.querySelector('div[title="Message business"]');
+    if (refreshedMessage) {
+      const refreshedPrev = refreshedMessage.previousElementSibling;
+      if (refreshedPrev) {
+        description = refreshedPrev.textContent || description;
+      }
+    }
+    const back = document.querySelector('div[aria-label="Back"]');
+    if (back) {
+      back.click();
+      await wait(500);
+    }
+  }
+
+  return description;
+}
+
+async function navigateBackToCatalog() {
+  const productMenuButton = document.querySelector('button[aria-label="Menu"]');
+  if (productMenuButton) {
     const backButton = document.querySelector('div[aria-label="Back"]');
     if (backButton) {
       backButton.click();
-      await wait(2000);
+      await wait(1200);
     }
   }
 
-  return {
-    description: description.replace('https', ' https')
-  };
+  const backButton = document.querySelector('div[aria-label="Back"]');
+  if (backButton) {
+    backButton.click();
+    await wait(500);
+  }
 }
 
 async function wait(ms) {

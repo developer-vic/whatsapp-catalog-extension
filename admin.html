@@ -24,11 +24,13 @@
     }
 
     .wrapper {
-      width: min(1024px, 92%);
+      width: 100%;
       margin: 0 auto;
+      padding: 0 24px;
       display: flex;
       flex-direction: column;
       gap: 24px;
+      max-width: 1280px;
     }
 
     .card {
@@ -37,6 +39,44 @@
       border: 1px solid rgba(148, 163, 184, 0.15);
       padding: 24px 26px;
       box-shadow: 0 30px 70px rgba(0, 0, 0, 0.35);
+    }
+
+    .tab-bar {
+      display: inline-flex;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      padding: 6px;
+      margin-bottom: 24px;
+      gap: 6px;
+    }
+
+    .tab-button {
+      background: transparent;
+      border: none;
+      color: rgba(226, 232, 240, 0.8);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 10px 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+
+    .tab-button.active {
+      background: rgba(37, 211, 102, 0.18);
+      color: #ecfdf5;
+      box-shadow: 0 10px 24px rgba(37, 211, 102, 0.25);
+    }
+
+    .tab-panel {
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .tab-panel.active {
+      display: flex;
     }
 
     .header {
@@ -182,6 +222,148 @@
       background: rgba(30, 41, 59, 0.9);
     }
 
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 20px;
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+    }
+
+    .modal {
+      background: rgba(15, 23, 42, 0.95);
+      border-radius: 20px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      width: min(960px, 100%);
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 32px 80px rgba(0, 0, 0, 0.55);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 24px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      background: rgba(148, 163, 184, 0.18);
+      color: rgba(226, 232, 240, 0.85);
+      border-radius: 10px;
+      border: none;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+
+    .modal-close:hover {
+      background: rgba(148, 163, 184, 0.28);
+      color: #e2e8f0;
+    }
+
+    .modal-body {
+      padding: 20px 24px 28px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .carousel {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+      border-radius: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: rgba(15, 23, 42, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 420px;
+    }
+
+    .carousel-track {
+      display: flex;
+      transition: transform 0.3s ease-in-out;
+      width: 100%;
+      height: 100%;
+    }
+
+    .carousel-slide {
+      min-width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .carousel-slide img {
+      max-width: 100%;
+      max-height: 60vh;
+      border-radius: 14px;
+      box-shadow: 0 22px 55px rgba(15, 23, 42, 0.35);
+      object-fit: contain;
+      background: rgba(15, 23, 42, 0.95);
+      padding: 12px;
+    }
+
+    .carousel-empty {
+      font-size: 15px;
+      color: rgba(226, 232, 240, 0.7);
+    }
+
+    .carousel-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 16px;
+      gap: 16px;
+    }
+
+    .carousel-button {
+      background: rgba(148, 163, 184, 0.2);
+      color: rgba(226, 232, 240, 0.9);
+      border: none;
+      border-radius: 12px;
+      padding: 10px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.2s ease, color 0.2s ease;
+      min-width: 80px;
+    }
+
+    .carousel-button:hover:not(:disabled) {
+      background: rgba(148, 163, 184, 0.28);
+      color: #f8fafc;
+    }
+
+    .carousel-button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .carousel-indicator {
+      font-size: 13px;
+      color: rgba(226, 232, 240, 0.65);
+    }
+
     th, td {
       padding: 12px 14px;
       font-size: 13px;
@@ -255,88 +437,141 @@
         <p class="subtitle">Manage operators, phone assignments, and scraping sessions</p>
       </div>
       <div id="adminSection">
-        <div class="grid">
-          <div class="card" style="padding: 20px;">
-            <h2 style="font-size: 18px; margin-bottom: 12px;">Create Operator</h2>
-            <form id="createUserForm">
-              <div>
-                <label for="newUserUsername">Username</label>
-                <input type="text" id="newUserUsername" required placeholder="Unique operator handle">
+        <div class="tab-bar" id="adminTabs">
+          <button class="tab-button active" data-tab="operatorsTab">Operator Management</button>
+          <button class="tab-button" data-tab="itemsTab">Item Management</button>
+        </div>
+
+        <div id="operatorsTab" class="tab-panel active">
+          <div class="grid">
+            <div class="card" style="padding: 20px;">
+              <h2 style="font-size: 18px; margin-bottom: 12px;">Create Operator</h2>
+              <form id="createUserForm">
+                <div>
+                  <label for="newUserUsername">Username</label>
+                  <input type="text" id="newUserUsername" required placeholder="Unique operator handle">
+                </div>
+                <div>
+                  <label for="newUserFullName">Full Name</label>
+                  <input type="text" id="newUserFullName" required placeholder="Operator full name">
+                </div>
+                <div>
+                  <label for="newUserPhoneNumber">Operator Phone Number</label>
+                  <input type="text" id="newUserPhoneNumber" required placeholder="+2348012345678">
+                </div>
+                <div>
+                  <label for="newUserEmail">Operator Email</label>
+                  <input type="email" id="newUserEmail" required placeholder="user@example.com">
+                </div>
+                <div>
+                  <label for="newUserPassword">Temporary Password</label>
+                  <input type="password" id="newUserPassword" minlength="6" required placeholder="Minimum 6 characters">
+                </div>
+                <div>
+                  <label for="newUserAssignedPhone">Assigned Catalog Phone</label>
+                  <input type="text" id="newUserAssignedPhone" required placeholder="+2348012345678">
+                </div>
+                <button type="submit" id="createUserButton" class="btn-primary">Create user</button>
+              </form>
+              <p class="muted" style="margin-top: 12px;">
+                A Firestore document is created automatically. Operator should reset their password after first sign-in.
+              </p>
+            </div>
+
+            <div class="card" style="padding: 20px;">
+              <h2 style="font-size: 18px; margin-bottom: 12px;">Assign Phone Number</h2>
+              <form id="assignPhoneForm">
+                <div>
+                  <label for="assignUserSelect">Select Operator</label>
+                  <select id="assignUserSelect" required>
+                    <option value="">Loading users...</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="assignPhoneInput">Phone Number</label>
+                  <input type="text" id="assignPhoneInput" placeholder="+2348012345678" required>
+                </div>
+                <button type="submit" id="assignPhoneButton" class="btn-primary">Update assignment</button>
+              </form>
+              <div class="muted" style="margin-top: 12px;">
+                The operator popup will only scrape the phone assigned here.
               </div>
-              <div>
-                <label for="newUserFullName">Full Name</label>
-                <input type="text" id="newUserFullName" required placeholder="Operator full name">
-              </div>
-              <div>
-                <label for="newUserPhoneNumber">Operator Phone Number</label>
-                <input type="text" id="newUserPhoneNumber" required placeholder="+2348012345678">
-              </div>
-              <div>
-                <label for="newUserEmail">Operator Email</label>
-                <input type="email" id="newUserEmail" required placeholder="user@example.com">
-              </div>
-              <div>
-                <label for="newUserPassword">Temporary Password</label>
-                <input type="password" id="newUserPassword" minlength="6" required placeholder="Minimum 6 characters">
-              </div>
-              <div>
-                <label for="newUserAssignedPhone">Assigned Catalog Phone</label>
-                <input type="text" id="newUserAssignedPhone" required placeholder="+2348012345678">
-              </div>
-              <button type="submit" id="createUserButton" class="btn-primary">Create user</button>
-            </form>
-            <p class="muted" style="margin-top: 12px;">
-              A Firestore document is created automatically. Operator should reset their password after first sign-in.
-            </p>
+            </div>
           </div>
 
           <div class="card" style="padding: 20px;">
-            <h2 style="font-size: 18px; margin-bottom: 12px;">Assign Phone Number</h2>
-            <form id="assignPhoneForm">
-              <div>
-                <label for="assignUserSelect">Select Operator</label>
-                <select id="assignUserSelect" required>
-                  <option value="">Loading users...</option>
-                </select>
-              </div>
-              <div>
-                <label for="assignPhoneInput">Phone Number</label>
-                <input type="text" id="assignPhoneInput" placeholder="+2348012345678" required>
-              </div>
-              <button type="submit" id="assignPhoneButton" class="btn-primary">Update assignment</button>
-            </form>
-            <div class="muted" style="margin-top: 12px;">
-              The operator popup will only scrape the phone assigned here.
+            <h2 style="font-size: 18px; margin-bottom: 12px;">Operators &amp; Sessions</h2>
+            <div class="muted" style="margin-bottom: 12px;">
+              All users stored in the <code>users</code> collection. Includes last session summary.
+            </div>
+            <div style="overflow-x: auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Assigned Phone</th>
+                    <th>Last Session</th>
+                    <th>Uploaded Items</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="usersTableBody">
+                  <tr>
+                    <td colspan="9" class="muted">Loading users...</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
 
-        <div class="card" style="padding: 20px;">
-          <h2 style="font-size: 18px; margin-bottom: 12px;">Operators &amp; Sessions</h2>
-          <div class="muted" style="margin-bottom: 12px;">
-            All users stored in the <code>users</code> collection. Includes last session summary.
+        <div id="itemsTab" class="tab-panel">
+          <div class="card" style="padding: 20px;">
+            <h2 style="font-size: 18px; margin-bottom: 12px;">Select Operator &amp; Session</h2>
+            <div class="grid">
+              <div>
+                <label for="itemsUserSelect">Operator</label>
+                <select id="itemsUserSelect">
+                  <option value="">Select operator</option>
+                </select>
+              </div>
+              <div>
+                <label for="itemsSessionSelect">Session</label>
+                <select id="itemsSessionSelect" disabled>
+                  <option value="">Select session</option>
+                </select>
+              </div>
+            </div>
+            <div class="muted" id="itemsSummary" style="margin-top: 12px;">
+              Choose an operator to load sessions and catalog items.
+            </div>
           </div>
-          <div style="overflow-x: auto;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Username</th>
-                  <th>Name</th>
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Assigned Phone</th>
-                  <th>Last Session</th>
-                  <th>Uploaded Items</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="usersTableBody">
-                <tr>
-                  <td colspan="9" class="muted">Loading users...</td>
-                </tr>
-              </tbody>
-            </table>
+
+          <div class="card" style="padding: 20px;">
+            <h2 style="font-size: 18px; margin-bottom: 12px;">Catalog Items</h2>
+            <div style="overflow-x: auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Contact</th>
+                    <th>Name</th>
+                    <th>Price</th>
+                    <th>Uploaded</th>
+                    <th>Images</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="itemsTableBody">
+                  <tr>
+                    <td colspan="6" class="muted">Select a session to view items.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -350,14 +585,67 @@
   <script src="src/firebase-init.js"></script>
   <script>
     const adminSection = document.getElementById('adminSection');
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
     const createUserForm = document.getElementById('createUserForm');
     const assignPhoneForm = document.getElementById('assignPhoneForm');
     const assignUserSelect = document.getElementById('assignUserSelect');
     const usersTableBody = document.getElementById('usersTableBody');
+    const itemsUserSelect = document.getElementById('itemsUserSelect');
+    const itemsSessionSelect = document.getElementById('itemsSessionSelect');
+    const itemsTableBody = document.getElementById('itemsTableBody');
+    const itemsSummary = document.getElementById('itemsSummary');
 
     let usersUnsubscribe = null;
     let sessionsCache = {};
     let cachedUsers = [];
+    let currentItemsContext = { userId: null, sessionId: null };
+
+    tabButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        switchTab(button.dataset.tab);
+      });
+    });
+
+    function switchTab(targetId) {
+      tabButtons.forEach((button) => {
+        button.classList.toggle('active', button.dataset.tab === targetId);
+      });
+
+      tabPanels.forEach((panel) => {
+        panel.classList.toggle('active', panel.id === targetId);
+      });
+
+      if (targetId === 'itemsTab') {
+        ensureItemsSelectors();
+      }
+    }
+
+    function ensureItemsSelectors() {
+      if (itemsUserSelect.dataset.initialized === 'true') {
+        return;
+      }
+
+      populateItemsUserSelect(cachedUsers);
+      itemsUserSelect.dataset.initialized = 'true';
+    }
+
+    itemsUserSelect.addEventListener('change', () => {
+      const userId = itemsUserSelect.value;
+      currentItemsContext = { userId: null, sessionId: null };
+      loadSessionsForItems(userId);
+    });
+
+    itemsSessionSelect.addEventListener('change', () => {
+      const userId = itemsUserSelect.value;
+      const sessionId = itemsSessionSelect.value;
+      if (!userId || !sessionId) {
+        clearItemsTable('Select a session to view items.');
+        return;
+      }
+      loadItemsForSession(userId, sessionId);
+    });
 
     createUserForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -552,6 +840,7 @@
       assignUserSelect.innerHTML = '';
       if (!users.length) {
         assignUserSelect.innerHTML = '<option value="">No users available</option>';
+        populateItemsUserSelect([]);
         return;
       }
 
@@ -567,6 +856,8 @@
         option.textContent = `${labelParts.join(' · ')} (${user.assignedPhone || 'No assigned phone'})`;
         assignUserSelect.appendChild(option);
       });
+
+      populateItemsUserSelect(users);
     }
 
     function handleUserAction(event) {
@@ -638,6 +929,390 @@
         return map[error.code] || error.message || 'Unexpected Firebase error.';
       }
       return typeof error === 'string' ? error : (error.message || 'Unexpected error occurred.');
+    }
+
+    function populateItemsUserSelect(users) {
+      itemsUserSelect.innerHTML = '';
+      if (!users.length) {
+        itemsUserSelect.innerHTML = '<option value="">No operators available</option>';
+        itemsSessionSelect.innerHTML = '<option value="">Select session</option>';
+        itemsSessionSelect.disabled = true;
+        clearItemsTable('Create an operator to manage catalog items.');
+        itemsSummary.textContent = 'Choose an operator to load sessions and catalog items.';
+        return;
+      }
+
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'Select operator';
+      itemsUserSelect.appendChild(defaultOption);
+
+      users.forEach((user) => {
+        const option = document.createElement('option');
+        option.value = user.id;
+        option.textContent = `${user.username || user.name || user.email || user.id} (${user.assignedPhone || 'No assigned phone'})`;
+        itemsUserSelect.appendChild(option);
+      });
+    }
+
+    async function loadSessionsForItems(userId) {
+      itemsSessionSelect.innerHTML = '';
+      itemsSessionSelect.disabled = true;
+      clearItemsTable(userId ? 'Loading sessions...' : 'Select a session to view items.');
+
+      if (!userId) {
+        itemsSummary.textContent = 'Choose an operator to load sessions and catalog items.';
+        return;
+      }
+
+      itemsSessionSelect.innerHTML = '<option value="">Loading sessions...</option>';
+
+      try {
+        const snapshot = await firebaseFirestore.collection('users')
+          .doc(userId)
+          .collection('sessions')
+          .orderBy('createdAt', 'desc')
+          .get();
+
+        if (snapshot.empty) {
+          itemsSessionSelect.innerHTML = '<option value="">No sessions found</option>';
+          itemsSummary.textContent = 'No sessions found for this operator.';
+          clearItemsTable('No catalog items for the selected operator.');
+          return;
+        }
+
+        itemsSessionSelect.innerHTML = '<option value="">Select session</option>';
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const option = document.createElement('option');
+          option.value = doc.id;
+          const createdAt = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleString() : 'Unknown time';
+          option.textContent = `${doc.id} · ${data.status || 'unknown'} · ${createdAt}`;
+          itemsSessionSelect.appendChild(option);
+        });
+
+        itemsSessionSelect.disabled = false;
+
+        itemsSummary.textContent = `Found ${snapshot.size} session${snapshot.size === 1 ? '' : 's'} for this operator.`;
+
+        const firstSessionId = snapshot.docs[0]?.id;
+        if (firstSessionId) {
+          itemsSessionSelect.value = firstSessionId;
+          await loadItemsForSession(userId, firstSessionId);
+        } else {
+          clearItemsTable('Select a session to view items.');
+        }
+      } catch (error) {
+        console.log('Failed to load sessions:', error);
+        showBanner(parseFirebaseError(error), 'error');
+        itemsSessionSelect.innerHTML = '<option value="">Failed to load sessions</option>';
+        itemsSessionSelect.disabled = true;
+        clearItemsTable('Unable to load sessions for this operator.');
+      }
+    }
+
+    async function loadItemsForSession(userId, sessionId) {
+      if (!userId || !sessionId) {
+        clearItemsTable('Select a session to view items.');
+        return;
+      }
+
+      currentItemsContext = { userId, sessionId };
+      itemsTableBody.innerHTML = '<tr><td colspan="6" class="muted">Loading catalog items...</td></tr>';
+
+      try {
+        const sessionRef = firebaseFirestore.collection('users').doc(userId).collection('sessions').doc(sessionId);
+        const [sessionDoc, itemsSnapshot] = await Promise.all([
+          sessionRef.get(),
+          sessionRef.collection('items').orderBy('uploadedAt', 'desc').get()
+        ]);
+
+        const sessionData = sessionDoc.exists ? sessionDoc.data() : null;
+        const items = itemsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        renderItemsTable(items, userId, sessionId, sessionData);
+      } catch (error) {
+        console.log('Failed to load items:', error);
+        showBanner(parseFirebaseError(error), 'error');
+        clearItemsTable('Unable to load catalog items for this session.');
+      }
+    }
+
+    function renderItemsTable(items, userId, sessionId, sessionData) {
+      if (!items.length) {
+        itemsTableBody.innerHTML = '<tr><td colspan="6" class="muted">No catalog items uploaded for this session.</td></tr>';
+        itemsSummary.textContent = `Session ${sessionId} · ${sessionData?.status || 'unknown'} · 0 items`;
+        return;
+      }
+
+      itemsTableBody.innerHTML = '';
+      items.forEach((item) => {
+        const images = Array.isArray(item.images) ? item.images : [];
+        const uploadedTime = formatUploadedTime(item.uploadedAt);
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${escapeHtml(item.contact || '—')}</td>
+          <td>${escapeHtml(item.name || 'Unnamed item')}</td>
+          <td>${escapeHtml(item.price || 'No price')}</td>
+          <td>${uploadedTime}</td>
+          <td>${images.length} image${images.length === 1 ? '' : 's'}</td>
+          <td>
+            <div class="actions">
+              ${images.length ? `<button class="btn-secondary" data-action="view-item" data-images='${encodeURIComponent(JSON.stringify(images))}' data-name="${encodeURIComponent(item.name || '')}" data-contact="${encodeURIComponent(item.contact || '')}">View</button>` : '<span class="muted">No images</span>'}
+              <button class="btn-secondary" data-action="delete-item" data-user="${userId}" data-session="${sessionId}" data-id="${item.id}" data-images='${encodeURIComponent(JSON.stringify(images.map((img) => img.path).filter(Boolean)))}'>Delete</button>
+            </div>
+          </td>
+        `;
+        itemsTableBody.appendChild(row);
+      });
+
+      itemsTableBody.querySelectorAll('button[data-action]').forEach((button) => {
+        button.addEventListener('click', handleItemAction);
+      });
+
+      const uploadedItems = sessionData?.uploadedItems ?? items.length;
+      const totalItems = sessionData?.totalItems ?? items.length;
+      const status = sessionData?.status || 'unknown';
+      const label = sessionData?.createdAt?.toDate ? sessionData.createdAt.toDate().toLocaleString() : 'Unknown time';
+
+      itemsSummary.textContent = `Session ${sessionId} · ${status} · ${uploadedItems}/${totalItems} items · Created ${label}`;
+    }
+
+    function clearItemsTable(message) {
+      itemsTableBody.innerHTML = `<tr><td colspan="6" class="muted">${message}</td></tr>`;
+    }
+
+    function handleItemAction(event) {
+      const action = event.currentTarget.dataset.action;
+
+      if (action === 'view-item') {
+        const encodedImages = event.currentTarget.dataset.images || '';
+        let images = [];
+        try {
+          images = JSON.parse(decodeURIComponent(encodedImages));
+        } catch (error) {
+          console.log('Unable to parse item images:', error);
+          showBanner('Unable to display images for this item.', 'error');
+          return;
+        }
+
+        const itemName = decodeURIComponent(event.currentTarget.dataset.name || '');
+        const contact = decodeURIComponent(event.currentTarget.dataset.contact || '');
+        openImageModal({ images, itemName, contact });
+        return;
+      }
+
+      if (action === 'delete-item') {
+        const userId = event.currentTarget.dataset.user;
+        const sessionId = event.currentTarget.dataset.session;
+        const itemId = event.currentTarget.dataset.id;
+        const imagesEncoded = event.currentTarget.dataset.images;
+        let imagePaths = [];
+        try {
+          imagePaths = JSON.parse(decodeURIComponent(imagesEncoded || '[]'));
+        } catch (error) {
+          console.log('Unable to parse image paths:', error);
+        }
+        deleteCatalogItem(userId, sessionId, itemId, imagePaths);
+      }
+    }
+
+    async function deleteCatalogItem(userId, sessionId, itemId, imagePaths = []) {
+      if (!userId || !sessionId || !itemId) {
+        showBanner('Missing identifiers for catalog item deletion.', 'error');
+        return;
+      }
+
+      const confirmDelete = window.confirm('Delete this catalog item and associated images? This cannot be undone.');
+      if (!confirmDelete) {
+        return;
+      }
+
+      try {
+        await firebaseFirestore.collection('users')
+          .doc(userId)
+          .collection('sessions')
+          .doc(sessionId)
+          .collection('items')
+          .doc(itemId)
+          .delete();
+
+        await deleteStoragePaths(imagePaths);
+
+        showBanner('Catalog item deleted successfully.', 'success');
+        await loadItemsForSession(userId, sessionId);
+      } catch (error) {
+        console.log('Failed to delete catalog item:', error);
+        showBanner(parseFirebaseError(error), 'error');
+      }
+    }
+
+    function deleteStoragePaths(paths = []) {
+      if (!paths.length) {
+        return Promise.resolve();
+      }
+
+      const storage = firebase.storage();
+      const deletions = paths.map((path) => {
+        if (!path) {
+          return Promise.resolve();
+        }
+        return storage.ref().child(path).delete().catch((error) => {
+          console.log('Failed to delete storage file:', path, error);
+        });
+      });
+
+      return Promise.all(deletions);
+    }
+
+    function formatUploadedTime(value) {
+      if (!value) {
+        return 'Unknown';
+      }
+
+      if (typeof value === 'string') {
+        const date = new Date(value);
+        if (!Number.isNaN(date.getTime())) {
+          return date.toLocaleString();
+        }
+      }
+
+      if (value instanceof Date) {
+        return value.toLocaleString();
+      }
+
+      if (value.toDate) {
+        try {
+          return value.toDate().toLocaleString();
+        } catch (error) {
+          return 'Unknown';
+        }
+      }
+
+      return 'Unknown';
+    }
+
+    function escapeHtml(text) {
+      if (text === undefined || text === null) {
+        return '';
+      }
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function openImageModal({ images = [], itemName = '', contact = '' }) {
+      const existingBackdrop = document.getElementById('modalBackdrop');
+      if (existingBackdrop) {
+        existingBackdrop.remove();
+      }
+
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop show';
+      backdrop.id = 'modalBackdrop';
+
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+
+      const header = document.createElement('div');
+      header.className = 'modal-header';
+      header.innerHTML = `
+        <div class="modal-title">${escapeHtml(itemName || 'Catalog item')} · ${escapeHtml(contact || 'Unknown contact')}</div>
+        <button class="modal-close" id="modalCloseButton">Close</button>
+      `;
+
+      const body = document.createElement('div');
+      body.className = 'modal-body';
+
+      const carousel = document.createElement('div');
+      carousel.className = 'carousel';
+
+      if (!images.length) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'carousel-empty';
+        emptyState.textContent = 'No images available for this item.';
+        carousel.appendChild(emptyState);
+      } else {
+        const track = document.createElement('div');
+        track.className = 'carousel-track';
+        track.id = 'carouselTrack';
+        images.forEach((img, index) => {
+          const slide = document.createElement('div');
+          slide.className = 'carousel-slide';
+          slide.innerHTML = `<img src="${escapeHtml(img.url || '')}" alt="Item image ${index + 1}">`;
+          track.appendChild(slide);
+        });
+        carousel.appendChild(track);
+
+        const controls = document.createElement('div');
+        controls.className = 'carousel-controls';
+        controls.innerHTML = `
+          <button class="carousel-button" id="carouselPrev">Prev</button>
+          <div class="carousel-indicator" id="carouselIndicator">1 / ${images.length}</div>
+          <button class="carousel-button" id="carouselNext">Next</button>
+        `;
+
+        body.appendChild(carousel);
+        body.appendChild(controls);
+
+        initializeCarousel(track, images.length);
+      }
+
+      if (!carousel.hasChildNodes()) {
+        body.appendChild(carousel);
+      }
+
+      modal.appendChild(header);
+      modal.appendChild(body);
+      backdrop.appendChild(modal);
+      document.body.appendChild(backdrop);
+
+      document.getElementById('modalCloseButton').addEventListener('click', closeImageModal);
+      backdrop.addEventListener('click', (event) => {
+        if (event.target === backdrop) {
+          closeImageModal();
+        }
+      });
+    }
+
+    function initializeCarousel(track, totalSlides) {
+      let currentIndex = 0;
+      const prevButton = document.getElementById('carouselPrev');
+      const nextButton = document.getElementById('carouselNext');
+      const indicator = document.getElementById('carouselIndicator');
+
+      function updateCarousel() {
+        track.style.transform = `translateX(-${currentIndex * 100}%)`;
+        indicator.textContent = `${currentIndex + 1} / ${totalSlides}`;
+        prevButton.disabled = currentIndex === 0;
+        nextButton.disabled = currentIndex === totalSlides - 1;
+      }
+
+      prevButton.addEventListener('click', () => {
+        if (currentIndex > 0) {
+          currentIndex -= 1;
+          updateCarousel();
+        }
+      });
+
+      nextButton.addEventListener('click', () => {
+        if (currentIndex < totalSlides - 1) {
+          currentIndex += 1;
+          updateCarousel();
+        }
+      });
+
+      updateCarousel();
+    }
+
+    function closeImageModal() {
+      const backdrop = document.getElementById('modalBackdrop');
+      if (backdrop) {
+        backdrop.remove();
+      }
     }
   </script>
 </body>

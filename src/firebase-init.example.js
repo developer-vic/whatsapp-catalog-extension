@@ -1,15 +1,16 @@
-// Firebase initialization shared between popup and background scripts
+// Firebase initialization template.
+// Copy this file to `src/firebase-init.js` and fill in your project credentials.
 
-// Ensure Firebase SDKs are loaded before this script
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+/* global firebase */
+
 const firebaseConfig = {
-  apiKey: "AIzaSyBXbzHXTKbT5qwPw9N8TJLIk5QSREDRc8U",
-  authDomain: "catalog-uploader.firebaseapp.com",
-  projectId: "catalog-uploader",
-  storageBucket: "catalog-uploader.firebasestorage.app",
-  messagingSenderId: "451635953611",
-  appId: "1:451635953611:web:1bf7325aad0db15a6c004e",
-  measurementId: "G-CTSS0ZX6LM"
+  apiKey: 'REPLACE_WITH_API_KEY',
+  authDomain: 'REPLACE_WITH_PROJECT_ID.firebaseapp.com',
+  projectId: 'REPLACE_WITH_PROJECT_ID',
+  storageBucket: 'REPLACE_WITH_PROJECT_ID.appspot.com',
+  messagingSenderId: 'REPLACE_WITH_SENDER_ID',
+  appId: 'REPLACE_WITH_APP_ID',
+  measurementId: 'REPLACE_WITH_MEASUREMENT_ID'
 };
 
 if (typeof firebase === 'undefined') {

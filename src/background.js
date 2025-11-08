@@ -2,12 +2,18 @@ importScripts(
   '/lib/firebase/firebase-app-compat.js',
   '/lib/firebase/firebase-auth-compat.js',
   '/lib/firebase/firebase-firestore-compat.js',
-  '/lib/firebase/firebase-storage-compat.js',
   '/src/firebase-init.js'
 );
 
-const FIRESTORE_BASE_URL = 'https://firestore.googleapis.com/v1';
-const FIREBASE_PROJECT_ID = 'developervicc';
+const {
+  FIRESTORE_BASE_URL,
+  FIREBASE_PROJECT_ID,
+  FIREBASE_STORAGE_BUCKET
+} = self.firebaseConstants || {};
+
+if (!FIRESTORE_BASE_URL || !FIREBASE_PROJECT_ID || !FIREBASE_STORAGE_BUCKET) {
+  throw new Error('Firebase constants unavailable. Ensure firebase-init.js exports expected values.');
+}
 
 let activeSessionContext = null;
 
@@ -101,7 +107,8 @@ async function handleScrapingCompleted(message) {
         name: item?.name || '',
         desc: item?.desc || '',
         price: item?.price || '',
-        description: item?.description || ''
+        description: item?.description || '',
+        images: Array.isArray(item?.images) ? item.images : []
       });
     });
   });
@@ -110,8 +117,30 @@ async function handleScrapingCompleted(message) {
   const totalContacts = typeof summary.totalContacts === 'number' ? summary.totalContacts : results.length;
   const timestamp = new Date().toISOString();
 
+  if (totalItems === 0) {
+    console.warn('Scraping completed with no catalog items. Skipping upload.');
+
+    try {
+      await firestoreDeleteDocument(`users/${userId}/sessions/${sessionId}`);
+    } catch (error) {
+      console.error('Failed to delete empty session document:', error);
+    }
+
+    chrome.runtime.sendMessage({
+      action: 'sessionEmpty',
+      sessionId,
+      userId
+    });
+
+    activeSessionContext = null;
+    return;
+  }
+
   try {
-    for (const item of flattenedItems) {
+    for (let index = 0; index < flattenedItems.length; index += 1) {
+      const item = flattenedItems[index];
+      const uploadedImages = await uploadItemImages(userId, sessionId, item, index);
+
       await firestoreAddDocument(
         `users/${userId}/sessions/${sessionId}/items`,
         {
@@ -120,6 +149,7 @@ async function handleScrapingCompleted(message) {
           desc: item.desc,
           price: item.price,
           description: item.description,
+          images: uploadedImages,
           uploadedAt: timestamp
         }
       );
@@ -148,6 +178,130 @@ async function handleScrapingCompleted(message) {
   } finally {
     activeSessionContext = null;
   }
+}
+
+async function uploadItemImages(userId, sessionId, item, itemIndex) {
+  const sourceImages = Array.isArray(item.images) ? item.images : [];
+  const images = sourceImages.slice(2); // Skip the first two images
+
+  if (images.length === 0) {
+    return [];
+  }
+
+  const sanitizedContact = sanitizeStorageSegment(item.contact || 'contact');
+  const storageBasePath = `users/${userId}/sessions/${sessionId}/${sanitizedContact}/item-${String(itemIndex).padStart(3, '0')}`;
+  const uploadedImages = [];
+
+  for (let i = 0; i < images.length; i += 1) {
+    const dataUrl = images[i];
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+      continue;
+    }
+
+    const originalIndex = i + 2; // Account for skipped images
+    const path = `${storageBasePath}/image-${String(originalIndex).padStart(2, '0')}.jpg`;
+    const url = await uploadImageDataUrl(path, dataUrl);
+    if (url) {
+      uploadedImages.push({
+        path,
+        url
+      });
+    }
+  }
+
+  return uploadedImages;
+}
+
+function sanitizeStorageSegment(value) {
+  return (value || 'unknown')
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9\-._]/g, '_')
+    .slice(0, 80);
+}
+
+async function firestoreDeleteDocument(documentPath) {
+  await authenticatedFetch(
+    `${FIRESTORE_BASE_URL}/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${documentPath}`,
+    'DELETE'
+  );
+}
+
+async function uploadImageDataUrl(path, dataUrl) {
+  const parsed = parseDataUrl(dataUrl);
+  if (!parsed) {
+    return null;
+  }
+
+  const { contentType, buffer } = parsed;
+
+  const url = `https://firebasestorage.googleapis.com/v0/b/${FIREBASE_STORAGE_BUCKET}/o?uploadType=media&name=${encodeURIComponent(path)}`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${activeSessionContext.idToken}`,
+        'Content-Type': contentType || 'application/octet-stream'
+      },
+      body: buffer
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Storage upload failed (${response.status}): ${errorText}`);
+    }
+
+    const metadata = await response.json();
+    return buildDownloadUrl(metadata);
+  } catch (error) {
+    console.error('Unable to upload image to Firebase Storage:', error);
+    return null;
+  }
+}
+
+function parseDataUrl(dataUrl) {
+  if (typeof dataUrl !== 'string') {
+    return null;
+  }
+
+  const match = dataUrl.match(/^data:(.*?);base64,(.+)$/);
+  if (!match) {
+    return null;
+  }
+
+  const contentType = match[1] || 'application/octet-stream';
+  const base64Data = match[2];
+
+  try {
+    const binary = atob(base64Data);
+    const length = binary.length;
+    const bytes = new Uint8Array(length);
+    for (let i = 0; i < length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return { contentType, buffer: bytes };
+  } catch (error) {
+    console.error('Failed to decode base64 image data:', error);
+    return null;
+  }
+}
+
+function buildDownloadUrl(metadata) {
+  if (!metadata || !metadata.name) {
+    return null;
+  }
+
+  if (metadata.mediaLink) {
+    return metadata.mediaLink;
+  }
+
+  if (metadata.downloadTokens) {
+    const encodedName = encodeURIComponent(metadata.name);
+    return `https://firebasestorage.googleapis.com/v0/b/${FIREBASE_STORAGE_BUCKET}/o/${encodedName}?alt=media&token=${metadata.downloadTokens}`;
+  }
+
+  return null;
 }
 
 async function updateSessionStatus(status, extraFields = {}) {

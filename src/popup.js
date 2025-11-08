@@ -14,6 +14,12 @@ chrome.runtime.onMessage.addListener((message) => {
       console.log('Unable to handle completed session notification:', error);
     });
   }
+
+  if (message.action === 'sessionEmpty') {
+    handleSessionEmpty(message).catch((error) => {
+      console.log('Unable to handle empty session notification:', error);
+    });
+  }
 });
 
 function bindEventListeners() {
@@ -151,6 +157,15 @@ async function handleSessionCompleted(message) {
   activeSessionId = sessionId;
   updateSessionLabel(sessionId);
   await updateSessionData(sessionId);
+}
+
+async function handleSessionEmpty(message) {
+  if (!currentUser || currentUser.uid !== message.userId) {
+    return;
+  }
+
+  showBanner('No catalog items found for this contact.', 'error');
+  refreshLatestSession();
 }
 
 function handleAuthStateChanged(user) {
