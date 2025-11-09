@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>WhatsApp Catalog Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/icon32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/icon16.png">
+  <link rel="stylesheet" href="assets/admin.css">
+</head>
+
+<body>
+  <div class="wrapper">
+    <div class="card">
+      <div class="header">
+        <div class="logo">WS</div>
+        <h1>WhatsApp Catalog Admin</h1>
+        <p class="subtitle">Manage operators, phone assignments, and scraping sessions</p>
+      </div>
+      <div id="adminSection">
+        <div class="tab-bar" id="adminTabs">
+          <button class="tab-button active" data-tab="operatorsTab">Operator Management</button>
+          <button class="tab-button" data-tab="itemsTab">Item Management</button>
+        </div>
+
+        <div id="operatorsTab" class="tab-panel active">
+          <div class="grid">
+            <div class="card" style="padding: 20px;">
+              <h2 style="font-size: 18px; margin-bottom: 12px;">Create Operator</h2>
+              <form id="createUserForm">
+                <div>
+                  <label for="newUserUsername">Username</label>
+                  <input type="text" id="newUserUsername" required placeholder="Unique operator handle">
+                </div>
+                <div>
+                  <label for="newUserFullName">Full Name</label>
+                  <input type="text" id="newUserFullName" required placeholder="Operator full name">
+                </div>
+                <div>
+                  <label for="newUserPhoneNumber">Operator Phone Number</label>
+                  <input type="text" id="newUserPhoneNumber" required placeholder="+2348012345678">
+                </div>
+                <div>
+                  <label for="newUserEmail">Operator Email</label>
+                  <input type="email" id="newUserEmail" required placeholder="user@example.com">
+                </div>
+                <div>
+                  <label for="newUserPassword">Temporary Password</label>
+                  <input type="password" id="newUserPassword" minlength="6" required placeholder="Minimum 6 characters">
+                </div>
+                <div>
+                  <label for="newUserAssignedPhone">Assigned Catalog Phone</label>
+                  <input type="text" id="newUserAssignedPhone" required placeholder="+2348012345678">
+                </div>
+                <button type="submit" id="createUserButton" class="btn-primary">Create user</button>
+              </form>
+              <p class="muted" style="margin-top: 12px;">
+                A Firestore document is created automatically. Operator should reset their password after first sign-in.
+              </p>
+            </div>
+
+            <div class="card" style="padding: 20px;">
+              <h2 style="font-size: 18px; margin-bottom: 12px;">Assign Phone Number</h2>
+              <form id="assignPhoneForm">
+                <div>
+                  <label for="assignUserSelect">Select Operator</label>
+                  <select id="assignUserSelect" required>
+                    <option value="">Loading users...</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="assignPhoneInput">Phone Number</label>
+                  <input type="text" id="assignPhoneInput" placeholder="+2348012345678" required>
+                </div>
+                <button type="submit" id="assignPhoneButton" class="btn-primary">Update assignment</button>
+              </form>
+              <div class="muted" style="margin-top: 12px;">
+                The operator popup will only scrape the phone assigned here.
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="padding: 20px;">
+            <h2 style="font-size: 18px; margin-bottom: 12px;">Operators &amp; Sessions</h2>
+            <div class="muted" style="margin-bottom: 12px;">
+              All users stored in the <code>users</code> collection. Includes last session summary.
+            </div>
+            <div style="overflow-x: auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Assigned Phone</th>
+                    <th>Last Session</th>
+                    <th>Uploaded Items</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="usersTableBody">
+                  <tr>
+                    <td colspan="9" class="muted">Loading users...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div id="itemsTab" class="tab-panel">
+          <div class="card" style="padding: 20px;">
+            <h2 style="font-size: 18px; margin-bottom: 12px;">Select Operator &amp; Session</h2>
+            <div class="grid">
+              <div>
+                <label for="itemsUserSelect">Operator</label>
+                <select id="itemsUserSelect">
+                  <option value="">Select operator</option>
+                </select>
+              </div>
+              <div>
+                <label for="itemsSessionSelect">Session</label>
+                <select id="itemsSessionSelect" disabled>
+                  <option value="">Select session</option>
+                </select>
+              </div>
+            </div>
+            <div class="muted" id="itemsSummary" style="margin-top: 12px;">
+              Choose an operator to load sessions and catalog items.
+            </div>
+          </div>
+
+          <div class="card" style="padding: 20px;">
+            <h2 style="font-size: 18px; margin-bottom: 12px;">Catalog Items</h2>
+            <div style="overflow-x: auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Contact</th>
+                    <th>Name</th>
+                    <th>Price</th>
+                    <th>Uploaded</th>
+                    <th>Images</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="itemsTableBody">
+                  <tr>
+                    <td colspan="6" class="muted">Select a session to view items.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="lib/firebase/firebase-app-compat.js"></script>
+  <script src="lib/firebase/firebase-auth-compat.js"></script>
+  <script src="lib/firebase/firebase-firestore-compat.js"></script>
+  <script src="lib/firebase/firebase-storage-compat.js"></script>
+  <script src="assets/firebase-init.js"></script>
+  <script src="assets/admin.js"></script>
+</body>
+
+</html>
