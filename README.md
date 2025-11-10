@@ -7,6 +7,7 @@ Chrome extension that automates WhatsApp Web catalog collection and streams each
 - **Single-contact scraping** based on the phone number assigned to the authenticated operator.
 - **Automated WhatsApp navigation** with a live overlay to show scrape progress.
 - **Incremental uploads with summary**: each product (and its images) is written to Firestore/Storage as soon as it is scraped, and the session finishes with a clear success/failure breakdown.
+- **Smart catalog sync**: existing cars are left untouched, removed cars are cleaned up automatically, and no more than five images per car are stored.
 - **Optional item cap**: operators can enable a limit in the popup to scrape only the first _N_ catalog entries (unchecked defaults to scraping everything).
 - **Firebase-integrated popup** that shows session progress once the background worker finishes uploading.
 - **Admin console** (`admin.html`) with two tabs:

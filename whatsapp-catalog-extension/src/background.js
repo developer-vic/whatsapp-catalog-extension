@@ -28,7 +28,10 @@ chrome.runtime.onInstalled.addListener((details) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.action) {
     case 'executeScript':
-      handleStartScraping(message, sender, sendResponse);
+      handleStartScraping(message, sender, sendResponse).catch((error) => {
+        console.error('Failed to start scraping session:', error);
+        sendResponse({ ok: false, error: error.message });
+      });
       return true;
     case 'catalogItemScraped':
       handleCatalogItemUpload(message, sendResponse);
@@ -53,7 +56,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-function handleStartScraping(payload, sender, sendResponse) {
+async function handleStartScraping(payload, sender, sendResponse) {
   const limitValue = payload.itemLimit && Number.isFinite(payload.itemLimit) && payload.itemLimit > 0
     ? Math.floor(payload.itemLimit)
     : null;
@@ -69,6 +72,8 @@ function handleStartScraping(payload, sender, sendResponse) {
     failure: 0,
     itemLimit: limitValue
   };
+
+  activeSessionContext.existingItems = await loadExistingSessionItems(payload.userId, payload.sessionId);
 
   chrome.tabs.query({ url: '*://web.whatsapp.com/*' }, (tabs) => {
     const targetTab = tabs.length > 0 ? tabs[0] : null;
@@ -134,10 +139,40 @@ async function handleCatalogItemUpload(message, sendResponse) {
   const attemptedImages = Math.min(Math.max(preparedItem.images.length - 2, 0), 5);
   let uploadedImages = [];
 
+  activeSessionContext.existingItems = activeSessionContext.existingItems || new Map();
+  const existingEntry = findExistingItem(preparedItem);
+
+  if (existingEntry) {
+    existingEntry.matched = true;
+    activeSessionContext.existingItems.set(existingEntry.key, existingEntry);
+    activeSessionContext.uploaded += 1;
+    activeSessionContext.success += 1;
+    if (typeof totalItemsHint === 'number' && totalItemsHint >= 0) {
+      activeSessionContext.total = Math.max(activeSessionContext.total, totalItemsHint);
+    }
+
+    try {
+      await updateSessionProgress({ lastUploadedAt: timestamp });
+    } catch (progressError) {
+      console.log('Failed to update session progress:', progressError);
+    }
+
+    sendResponse({
+      ok: true,
+      summary: {
+        success: activeSessionContext.success,
+        failure: activeSessionContext.failure
+      },
+      imagesUploaded: Array.isArray(existingEntry.item.images) ? existingEntry.item.images.length : 0,
+      imagesAttempted: Array.isArray(existingEntry.item.images) ? existingEntry.item.images.length : 0
+    });
+    return;
+  }
+
   try {
     uploadedImages = await uploadItemImages(userId, sessionId, preparedItem, itemIndex);
 
-    await firestoreAddDocument(
+    const docResponse = await firestoreAddDocument(
       `users/${userId}/sessions/${sessionId}/items`,
       {
         contact: preparedItem.contact,
@@ -149,6 +184,9 @@ async function handleCatalogItemUpload(message, sendResponse) {
         uploadedAt: timestamp
       }
     );
+
+    const docPath = extractDocumentPath(docResponse?.name);
+    registerExistingItem(preparedItem, docPath, uploadedImages);
 
     activeSessionContext.uploaded += 1;
     activeSessionContext.success += 1;
@@ -215,6 +253,10 @@ async function handleScrapingCompleted(message, sendResponse) {
     incomingSummary.totalContacts || (processedTotal > 0 ? 1 : 0),
     0
   );
+
+  await cleanupRemovedItems(userId, sessionId).catch((error) => {
+    console.log('Failed to clean up removed items:', error);
+  });
 
   if (totalItems === 0 && failure === 0) {
     try {
@@ -326,10 +368,220 @@ function sanitizeStorageSegment(value) {
 }
 
 async function firestoreDeleteDocument(documentPath) {
+  const resolvedPath = documentPath && documentPath.includes('/documents/')
+    ? documentPath.split('/documents/')[1]
+    : documentPath;
   await authenticatedFetch(
-    `${FIRESTORE_BASE_URL}/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${documentPath}`,
+    `${FIRESTORE_BASE_URL}/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${resolvedPath}`,
     'DELETE'
   );
+}
+
+function makeItemKey(item) {
+  const normalize = (value) => (value || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  return [
+    normalize(item.contact),
+    normalize(item.name),
+    normalize(item.desc),
+    normalize(item.price)
+  ].join('||');
+}
+
+function findExistingItem(item) {
+  if (!activeSessionContext?.existingItems) {
+    return null;
+  }
+  const key = makeItemKey(item);
+  const entry = activeSessionContext.existingItems.get(key);
+  if (!entry) {
+    return null;
+  }
+  return { ...entry, key };
+}
+
+function registerExistingItem(item, docPath, images) {
+  if (!activeSessionContext) {
+    return;
+  }
+  activeSessionContext.existingItems = activeSessionContext.existingItems || new Map();
+  const key = makeItemKey(item);
+  activeSessionContext.existingItems.set(key, {
+    key,
+    docPath: docPath || null,
+    matched: true,
+    item: {
+      contact: item.contact,
+      name: item.name,
+      desc: item.desc,
+      price: item.price,
+      description: item.description,
+      images: Array.isArray(images) ? images : []
+    }
+  });
+}
+
+async function loadExistingSessionItems(userId, sessionId) {
+  const map = new Map();
+  if (!userId || !sessionId) {
+    return map;
+  }
+
+  try {
+    const response = await authenticatedFetch(
+      `${FIRESTORE_BASE_URL}/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${userId}/sessions/${sessionId}/items?pageSize=1000`,
+      'GET'
+    );
+
+    const documents = Array.isArray(response?.documents) ? response.documents : [];
+    documents.forEach((doc) => {
+      const docPath = extractDocumentPath(doc.name);
+      const item = firestoreDocumentToItem(doc.fields || {});
+      const key = makeItemKey(item);
+      map.set(key, {
+        key,
+        docPath,
+        matched: false,
+        item
+      });
+    });
+  } catch (error) {
+    if (error.message && error.message.includes('404')) {
+      console.log('No existing catalog session found, starting fresh.');
+    } else {
+      console.log('Failed to load existing catalog items:', error);
+    }
+  }
+
+  return map;
+}
+
+async function cleanupRemovedItems(userId, sessionId) {
+  if (!activeSessionContext?.existingItems?.size) {
+    return;
+  }
+
+  const unmatched = Array.from(activeSessionContext.existingItems.values()).filter((entry) => !entry.matched);
+  if (unmatched.length === 0) {
+    return;
+  }
+
+  for (const entry of unmatched) {
+    if (entry.docPath) {
+      try {
+        await firestoreDeleteDocument(entry.docPath);
+      } catch (error) {
+        console.log('Failed to delete removed catalog document:', entry.docPath, error);
+      }
+    }
+
+    const imagePaths = Array.isArray(entry.item?.images)
+      ? entry.item.images.map((img) => img.path).filter(Boolean)
+      : [];
+    await deleteStoragePaths(imagePaths);
+
+    const removalKey = entry.key || makeItemKey(entry.item || {});
+    if (removalKey && activeSessionContext.existingItems.has(removalKey)) {
+      activeSessionContext.existingItems.delete(removalKey);
+    }
+  }
+}
+
+async function deleteStoragePaths(paths = []) {
+  if (!Array.isArray(paths) || paths.length === 0) {
+    return;
+  }
+
+  for (const path of paths) {
+    await deleteStorageFile(path);
+  }
+}
+
+async function deleteStorageFile(path) {
+  if (!path || !activeSessionContext?.idToken) {
+    return;
+  }
+
+  try {
+    const url = `https://firebasestorage.googleapis.com/v0/b/${FIREBASE_STORAGE_BUCKET}/o/${encodeURIComponent(path)}`;
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${activeSessionContext.idToken}`
+      }
+    });
+
+    if (!response.ok && response.status !== 404) {
+      const errorText = await response.text();
+      console.log(`Failed to delete storage object ${path}:`, errorText);
+    }
+  } catch (error) {
+    console.log('Storage deletion error:', error);
+  }
+}
+
+function firestoreDocumentToItem(fields) {
+  return {
+    contact: deserializeFirestoreValue(fields.contact),
+    name: deserializeFirestoreValue(fields.name),
+    desc: deserializeFirestoreValue(fields.desc),
+    price: deserializeFirestoreValue(fields.price),
+    description: deserializeFirestoreValue(fields.description),
+    images: deserializeFirestoreValue(fields.images) || []
+  };
+}
+
+function deserializeFirestoreValue(value) {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  if (value.nullValue !== undefined) {
+    return null;
+  }
+
+  if (value.stringValue !== undefined) {
+    return value.stringValue;
+  }
+
+  if (value.integerValue !== undefined) {
+    return Number(value.integerValue);
+  }
+
+  if (value.doubleValue !== undefined) {
+    return value.doubleValue;
+  }
+
+  if (value.booleanValue !== undefined) {
+    return Boolean(value.booleanValue);
+  }
+
+  if (value.arrayValue) {
+    const values = value.arrayValue.values || [];
+    return values.map((entry) => deserializeFirestoreValue(entry));
+  }
+
+  if (value.mapValue) {
+    const result = {};
+    const nestedFields = value.mapValue.fields || {};
+    Object.entries(nestedFields).forEach(([key, nestedValue]) => {
+      result[key] = deserializeFirestoreValue(nestedValue);
+    });
+    return result;
+  }
+
+  return undefined;
+}
+
+function extractDocumentPath(name) {
+  if (!name || typeof name !== 'string') {
+    return null;
+  }
+  const parts = name.split('/documents/');
+  return parts.length === 2 ? parts[1] : name;
 }
 
 function notifyRuntime(payload) {
@@ -498,7 +750,7 @@ async function updateSessionStatus(status, extraFields = {}) {
 }
 
 async function firestoreAddDocument(collectionPath, data) {
-  await authenticatedFetch(
+  return await authenticatedFetch(
     `${FIRESTORE_BASE_URL}/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collectionPath}`,
     'POST',
     {

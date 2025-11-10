@@ -143,7 +143,7 @@ async function handleStartScrape() {
   }
 
   try {
-    const sessionId = generateSessionId();
+    const sessionId = derivePersistentSessionId();
     const userId = currentUser.uid;
     const idToken = await currentUser.getIdToken(true);
 
@@ -169,7 +169,7 @@ async function handleStartScrape() {
 
     activeSessionId = sessionId;
     updateSessionLabel(sessionId);
-    updateProgressUI({ uploadedItems: 0, totalItems: 0, failedItems: 0, status: 'running' });
+    updateProgressUI({ uploadedItems: 0, totalItems: itemLimit || 0, failedItems: 0, status: 'running' });
     window.close();
 
   } catch (error) {
@@ -286,7 +286,7 @@ async function createSessionDocument(userId, sessionId, itemLimit) {
     status: 'running',
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     uploadedItems: 0,
-    totalItems: 0,
+    totalItems: itemLimit || 0,
     failedItems: 0,
     itemLimit: itemLimit || null
   });
@@ -297,24 +297,28 @@ function refreshLatestSession() {
   updateProgressUI({ uploadedItems: 0, totalItems: 0, failedItems: 0, status: 'idle' });
   clearItemsList();
 
+  if (!currentUser) {
+    return;
+  }
+
+  const sessionId = derivePersistentSessionId();
+
   firebaseFirestore
     .collection('users')
     .doc(currentUser.uid)
     .collection('sessions')
-    .orderBy('createdAt', 'desc')
-    .limit(1)
+    .doc(sessionId)
     .get()
     .then((snapshot) => {
-      if (snapshot.empty) {
+      if (!snapshot.exists) {
         return;
       }
-      const doc = snapshot.docs[0];
-      activeSessionId = doc.id;
+      activeSessionId = snapshot.id;
       updateSessionLabel(activeSessionId);
-      updateSessionData(activeSessionId, doc.data());
+      updateSessionData(activeSessionId, snapshot.data());
     })
     .catch((error) => {
-      console.log('Unable to fetch latest session:', error);
+      console.log('Unable to fetch persistent session:', error);
     });
 }
 
@@ -500,8 +504,14 @@ function parseFirebaseError(error) {
   return map[error.code] || error.message || 'Unexpected Firebase error.';
 }
 
-function generateSessionId() {
-  return new Date().toISOString().replace(/[:.]/g, '-');
+function derivePersistentSessionId() {
+  const base = assignedPhoneNumber || (currentUser ? currentUser.uid : 'latest');
+  return base
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'latest';
 }
 
 function escapeHtml(text) {
