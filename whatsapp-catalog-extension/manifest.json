@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "WhatsApp Catalog Scraper",
-  "version": "4.0.0",
+  "name": "OB Catalog Sync Tool",
+  "version": "5.0.0",
   "description": "Professional tool for automated WhatsApp Business catalog extraction with Excel integration and organized file management. ==> https://developervic.com",
   "author": "Programmer G-WIN",
   "homepage_url": "https://programmergwin.com",

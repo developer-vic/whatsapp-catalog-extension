@@ -29,7 +29,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.action) {
     case 'executeScript':
       handleStartScraping(message, sender, sendResponse).catch((error) => {
-        console.error('Failed to start scraping session:', error);
+        console.error('Failed to Start Sync! session:', error);
         sendResponse({ ok: false, error: error.message });
       });
       return true;

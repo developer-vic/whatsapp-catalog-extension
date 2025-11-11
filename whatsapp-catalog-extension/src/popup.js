@@ -136,7 +136,7 @@ async function handleStartScrape() {
       showBanner('Enter a positive number for the item limit.', 'error');
       isStartingSession = false;
       startButton.disabled = false;
-      startButton.textContent = 'Start scraping';
+      startButton.textContent = 'Start Sync!';
       return;
     }
     itemLimit = parsedLimit;
@@ -161,7 +161,7 @@ async function handleStartScrape() {
       const error = chrome.runtime.lastError;
       if (error) {
         console.log('Failed to dispatch executeScript:', error);
-        showBanner('Unable to start scraping. Keep the dashboard open and try again.', 'error');
+        showBanner('Unable to Start Sync!. Keep the dashboard open and try again.', 'error');
       } else {
         showBanner('Session started. Keep WhatsApp Web open until completion.', 'success');
       }
@@ -173,12 +173,12 @@ async function handleStartScrape() {
     window.close();
 
   } catch (error) {
-    console.log('Start scraping error:', error);
+    console.log('Start Sync! error:', error);
     showBanner(parseFirebaseError(error), 'error');
   } finally {
     isStartingSession = false;
     startButton.disabled = false;
-    startButton.textContent = 'Start scraping';
+    startButton.textContent = 'Start Sync!';
   }
 }
 

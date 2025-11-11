@@ -446,7 +446,7 @@ function ensureOverlay() {
   overlayElement.id = 'whatsapp-scraper-overlay';
   overlayElement.innerHTML = `
     <div class="overlay-inner">
-      <div class="overlay-title">WhatsApp catalog scraper</div>
+      <div class="overlay-title">OB Catalog Sync Tool</div>
       <div class="overlay-status" id="overlayStatus">Preparing...</div>
       <div class="overlay-progress">
         <span id="overlayCount">0 items</span>

@@ -1,4 +1,4 @@
-# WhatsApp Catalog Scraper Extension
+# OB Catalog Sync Tool Extension
 
 Chrome extension that automates WhatsApp Web catalog collection and streams each product directly into Firebase with a final completion summary.
 
@@ -26,9 +26,9 @@ Chrome extension that automates WhatsApp Web catalog collection and streams each
    - Sign in with your Firebase Auth credentials.  
    - The popup shows the phone number assigned to your account.
 
-3. **Start scraping**  
+3. **Start Sync!**  
    - Make sure you are logged in to [web.whatsapp.com](https://web.whatsapp.com) in a browser tab.  
-   - Click **Start scraping** in the popup. The popup closes automatically.  
+   - Click **Start Sync!** in the popup. The popup closes automatically.  
    - (Optional) Check **Limit catalog items** to scrape only the first _N_ products.  
    - The content script opens the assigned contact’s catalog and scrapes every product, capturing descriptions and product images (skipping the first two thumbnails).
 
